@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>プライバシーポリシー - Vets SOAP Scribe (VSS)</title>
+      <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body {
+                              font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+                              line-height: 1.8;
+                              color: #333;
+                              background: #f8f9fa;
+                              padding: 20px;
+                }
+                .container {
+                              max-width: 800px;
+                              margin: 0 auto;
+                              background: #fff;
+                              border-radius: 12px;
+                              padding: 40px;
+                              box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+                }
+                h1 {
+                              font-size: 1.6em;
+                              color: #1a73e8;
+                              margin-bottom: 8px;
+                }
+                .subtitle {
+                              color: #666;
+                              font-size: 0.95em;
+                              margin-bottom: 30px;
+                }
+                h2 {
+                              font-size: 1.2em;
+                              color: #202124;
+                              margin-top: 28px;
+                              margin-bottom: 12px;
+                              padding-bottom: 6px;
+                              border-bottom: 2px solid #e8eaed;
+                }
+                p, li { margin-bottom: 8px; }
+                ul { padding-left: 24px; }
+                .updated {
+                              text-align: right;
+                              color: #999;
+                              font-size: 0.85em;
+                              margin-top: 40px;
+                }
+                table {
+                              width: 100%;
+                              border-collapse: collapse;
+                              margin: 12px 0;
+                }
+                th, td {
+                              border: 1px solid #e0e0e0;
+                              padding: 10px 14px;
+                              text-align: left;
+                }
+                th {
+                              background: #f1f3f4;
+                              font-weight: 600;
+                }
+            </style>
+  </head>
+  <body>
+        <div class="container">
+                  <h1>プライバシーポリシー</h1>
+                <p class="subtitle">Vets SOAP Scribe (VSS) - Chrome拡張機能</p>p>
+        
+                <h2>1. はじめに</h2>
+                <p>Vets SOAP Scribe（以下「本拡張機能」）は、獣医師向けのAI音声カルテ作成アシスタントです。本プライバシーポリシーでは、本拡張機能が取り扱うデータについて説明します。</p>
+        
+                <h2>2. 収集・使用するデータ</h2>
+                <table>
+                              <tr>
+                                                <th>データの種類</th>
+                                <th>用途</th>
+                                <th>保存先</th>
+                              </tr>
+                            <tr>
+                                              <td>OpenAI APIキー</td>
+                                <td>音声認識・テキスト生成APIの認証</td>
+                                <td>ブラウザのローカルストレージ</td>
+                            </tr>
+                            <tr>
+                                              <td>音声録音データ</td>td>
+                                              <td>OpenAI Whisper APIによる文字起こし</td>td>
+                                              <td>一時的にメモリに保持（処理後破棄）</td>td>
+                            </tr>
+                              <tr>
+                                                <td>カルテ（SOAP）データ</td>
+                                <td>診療記録の生成・保存</td>
+                                <td>ローカルストレージ / Google スプレッドシート（ユーザー設定時）</td>
+                              </tr>
+                            <tr>
+                                              <td>獣医用語辞書</td>td>
+                                              <td>音声認識の精度向上</td>td>
+                                              <td>ブラウザのローカルストレージ</td>td>
+                            </tr>
+                              <tr>
+                                                <td>GAS（Google Apps Script）URL</td>
+                                <td>カルテデータのクラウド保存</td>
+                                <td>ブラウザのローカルストレージ</td>
+                              </tr>
+                </table>
+        
+                <h2>3. 外部サービスへのデータ送信</h2>
+                <p>本拡張機能は、以下の外部サービスにデータを送信します。いずれもユーザーの明示的な操作時のみ通信が発生します。</p>
+                <ul>
+                              <li><strong>OpenAI API</strong>（api.openai.com）: 音声データの文字起こし（Whisper API）およびSOAPカルテの生成（GPT API）のため</li>
+                            <li><strong>Google Apps Script</strong>（script.google.com）: ユーザーが設定したGoogle スプレッドシートへのカルテ保存のため</li>
+                </ul>
+        
+                <h2>4. データの保存</h2>
+                <p>ユーザーの設定情報およびカルテ履歴は、Chrome の chrome.storage.local APIを使用してブラウザ内にローカル保存されます。これらのデータは開発者のサーバーには送信されません。</p>
+        
+                <h2>5. 第三者へのデータ提供</h2>
+                <p>本拡張機能は、上記の外部サービス（OpenAI、Google Apps Script）を除き、ユーザーのデータを第三者に販売、譲渡、提供することはありません。</p>
+        
+                <h2>6. データの管理</h2>
+                <p>ユーザーは以下の方法でデータを管理できます：</p>
+                <ul>
+                            <li>拡張機能の設定画面からAPIキー・URLを変更・削除</li>
+                            <li>カルテ履歴の消去</li>
+                            <li>拡張機能のアンインストールによる全データの削除</li>
+                </ul>
+        
+                <h2>7. セキュリティ</h2>
+                <p>本拡張機能は、APIキーをローカルにのみ保存し、HTTPS通信を使用して外部サービスと通信します。ユーザー自身が設定したAPIキーおよびURLのみが使用されます。</p>
+        
+                <h2>8. ポリシーの変更</h2>
+                <p>本プライバシーポリシーは、必要に応じて更新されることがあります。重要な変更がある場合は、拡張機能のアップデートを通じてお知らせします。</p>
+        
+                <h2>9. お問い合わせ</h2>
+                <p>本プライバシーポリシーに関するお問い合わせは、Chrome Web Store の拡張機能ページよりご連絡ください。</p>
+        
+                <p class="updated">最終更新日: 2025年2月24日</p>
+        </div>div>
+  </body>
+</html>html></p></p></li></li></p></p></strong></strong></li>
+                </ul></p></td></td>
+                              </tr>
+                            </tr></td></td>
+                              </tr>
+                            </tr></td></td>
+                            </tr></th></th>
+                              </tr>
+                </table></p></h2></h1>
+  </body>
+      </style></title>
+  </head>
