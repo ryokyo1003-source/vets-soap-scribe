@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Vets SOAP Scribe (VSS)</title>
+  <style>
+    body { width: 480px; margin: 0; font-family: "Helvetica Neue", Arial, sans-serif; background: #f0f4f8; color: #333; }
+
+    header { background: #fff; padding: 10px 15px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; }
+    h1 { margin: 0; font-size: 14px; color: #2c3e50; font-weight: bold; }
+
+    /* ヘッダーボタン群 */
+    .header-btns { display: flex; gap: 10px; }
+    .icon-btn { border: none; background: #3498db; color: white; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; transition: 0.2s; }
+    .icon-btn:hover { background: #2980b9; }
+    #settingsBtn { background: #ecf0f1; color: #555; }
+    #settingsBtn:hover { background: #bdc3c7; }
+
+    /* スロット */
+    .slot-container { display: flex; gap: 5px; padding: 10px; background: #e6eaed; overflow-x: auto; }
+    .slot-card {
+      flex: 1; background: #fff; border: 1px solid #ccc; border-radius: 6px; padding: 8px; cursor: pointer;
+      font-size: 11px; text-align: center; transition: 0.2s; min-width: 80px; position: relative;
+    }
+    .slot-card.active { border: 2px solid #3498db; background: #fff; color: #3498db; font-weight: bold; }
+    .slot-card.has-data { border-bottom: 3px solid #f39c12; }
+
+    /* メインエリア */
+    .main-area { padding: 15px; background: #fff; min-height: 480px; transition: background 0.3s; }
+    .main-area.mode-interview { background: #fffbf0; border-left: 5px solid #f1c40f; }
+
+    .status-bar { text-align: center; font-size: 12px; font-weight: bold; color: #555; margin-bottom: 10px; }
+    .status-bar.recording { color: #e74c3c; }
+
+    /* 録音中アニメーション */
+    .recording-indicator {
+      display: none;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      margin-bottom: 15px;
+      background: linear-gradient(135deg, #fee0e0 0%, #fff5f5 100%);
+      border: 2px solid #e74c3c;
+      border-radius: 12px;
+      animation: pulse-border 2s ease-in-out infinite;
+    }
+    .recording-indicator.active { display: flex; }
+
+    @keyframes pulse-border {
+      0%, 100% { border-color: #e74c3c; box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4); }
+      50% { border-color: #c0392b; box-shadow: 0 0 15px 5px rgba(231, 76, 60, 0.2); }
+    }
+
+    .rec-dot {
+      width: 14px;
+      height: 14px;
+      background: #e74c3c;
+      border-radius: 50%;
+      animation: blink 1s ease-in-out infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    .rec-text {
+      font-size: 13px;
+      font-weight: bold;
+      color: #c0392b;
+    }
+
+    .sound-wave {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      height: 20px;
+    }
+    .sound-wave span {
+      width: 4px;
+      background: #e74c3c;
+      border-radius: 2px;
+      animation: wave 0.8s ease-in-out infinite;
+    }
+    .sound-wave span:nth-child(1) { height: 8px; animation-delay: 0s; }
+    .sound-wave span:nth-child(2) { height: 16px; animation-delay: 0.1s; }
+    .sound-wave span:nth-child(3) { height: 12px; animation-delay: 0.2s; }
+    .sound-wave span:nth-child(4) { height: 20px; animation-delay: 0.3s; }
+    .sound-wave span:nth-child(5) { height: 10px; animation-delay: 0.4s; }
+
+    @keyframes wave {
+      0%, 100% { transform: scaleY(0.5); }
+      50% { transform: scaleY(1); }
+    }
+
+    #currentTitleEdit {
+      width: 100%; padding: 10px; font-size: 14px; font-weight: bold;
+      border: 2px solid #eee; border-radius: 6px; box-sizing: border-box;
+      text-align: center; margin-bottom: 10px; color: #2c3e50;
+    }
+
+    /* モード選択ドロップダウン */
+    .mode-select-container { display: flex; justify-content: center; margin-bottom: 15px; }
+    #modeSelect {
+      padding: 6px 16px; font-size: 12px; font-weight: bold; border: 2px solid #ddd;
+      border-radius: 20px; background: #f8f8f8; color: #555; cursor: pointer;
+      outline: none; appearance: none; -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M6 8L1 3h10z' fill='%23555'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 10px center;
+      padding-right: 30px;
+    }
+    #modeSelect:focus { border-color: #3498db; }
+
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+    button { padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: white; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    button:active { transform: translateY(1px); box-shadow: none; }
+    #recBtn { background: #3498db; grid-column: span 2; }
+    #pauseBtn { background: #f39c12; display: none; }
+    #stopBtn { background: #e74c3c; display: none; }
+
+    .preview-box { background: #f9f9f9; padding: 10px; height: 80px; overflow-y: auto; border: 1px solid #eee; border-radius: 4px; font-size: 11px; color: #555; margin-bottom: 15px; }
+
+    .result-area { display: none; border-top: 1px dashed #ccc; padding-top: 15px; }
+    .result-label { font-size: 10px; font-weight: bold; color: #2c3e50; display: block; margin-top: 5px; }
+
+    input.res-title { display: none; }
+    textarea.res-text { width: 100%; padding: 5px; font-size: 11px; box-sizing: border-box; font-family: monospace; border: 1px solid #ddd; }
+    #resSoap { height: 150px; background: #fff; }
+    #resFull { height: 80px; background: #f4f4f4; color: #666; }
+    #cloudMsg { margin-top:5px; text-align:right; font-size:10px; color:#2ecc71; display:none; }
+
+    /* 記載漏れ警告 */
+    #missingWarning {
+      display: none; padding: 8px 12px; margin: 8px 0; border-radius: 6px;
+      background: #fff3cd; border: 1px solid #ffc107; color: #856404; font-size: 11px;
+    }
+
+    /* セクション別コピーボタン群 */
+    .section-copy-btns { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+    .section-copy-btn {
+      padding: 5px 10px; font-size: 10px; font-weight: bold; border: 1px solid #bbb;
+      border-radius: 4px; background: #f5f5f5; color: #333; cursor: pointer;
+      box-shadow: none; transition: 0.15s;
+    }
+    .section-copy-btn:hover { background: #e0e0e0; }
+    .section-copy-btn:active { background: #ccc; }
+    .section-copy-btn.copied { background: #2ecc71; color: white; border-color: #27ae60; }
+
+    #copyStockBtn { width: 100%; margin-top: 6px; background: #2c3e50; color: #fff; }
+
+    /* 設定エリア */
+    #settingsArea { display: none; padding: 15px; background: #f8f9fa; border-bottom: 1px solid #ddd; max-height: 400px; overflow-y: auto; }
+    .setting-group { margin-bottom: 15px; }
+    .setting-group label { display: block; font-size: 11px; font-weight: bold; color: #555; margin-bottom: 5px; }
+    .setting-group input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    .api-key-wrapper { position: relative; display: flex; align-items: center; gap: 6px; }
+    .api-key-wrapper input { flex: 1; }
+    .toggle-key-btn { padding: 6px 10px; font-size: 11px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; white-space: nowrap; }
+    .api-key-saved { font-size: 10px; color: #27ae60; font-weight: bold; display: none; margin-top: 3px; }
+    .csv-upload-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .csv-upload-btn { padding: 6px 12px; font-size: 11px; border: 1px solid #3498db; border-radius: 4px; background: #3498db; color: #fff; cursor: pointer; font-weight: bold; white-space: nowrap; }
+    .csv-upload-btn:hover { background: #2980b9; }
+    .csv-status { font-size: 10px; color: #27ae60; font-weight: bold; display: none; }
+    .setting-group textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 11px; font-family: monospace; line-height: 1.4; height: 100px; }
+    .note { font-size: 10px; color: #666; margin-top: 4px; background: #fff; padding: 5px; border-radius: 4px; border: 1px solid #eee; }
+
+    .footer-link { text-align: center; margin: 10px 0; font-size: 11px; }
+    a { color: #3498db; text-decoration: underline; cursor: pointer; }
+
+    /* ご家族向け要約ボタン */
+    #familySummaryBtn {
+      width: 100%; margin-top: 6px;
+      background: #27ae60; color: #fff;
+    }
+    #familySummaryBtn:hover { background: #219a52; }
+    #familySummaryBtn:disabled { background: #95a5a6; cursor: not-allowed; }
+
+    /* ご家族向け要約モーダル */
+    #familySummaryOverlay {
+      display: none; position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.65);
+      z-index: 1000;
+      justify-content: center; align-items: flex-start;
+      padding: 10px; overflow-y: auto;
+    }
+    #familySummaryModal {
+      background: #fff; border-radius: 10px;
+      width: 100%; max-width: 460px;
+      padding: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+      margin: auto;
+    }
+    .family-summary-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 10px;
+      border-bottom: 2px solid #27ae60; padding-bottom: 8px;
+    }
+    .family-summary-header h3 {
+      margin: 0; font-size: 13px; color: #27ae60;
+    }
+    #closeFamilySummaryBtn {
+      background: #ddd; color: #555;
+      padding: 4px 9px; font-size: 12px;
+      width: auto; box-shadow: none;
+    }
+    #closeFamilySummaryBtn:hover { background: #bbb; }
+    #familySummaryLoading {
+      text-align: center; padding: 30px 20px;
+      color: #666; font-size: 12px;
+    }
+    #familySummaryContent {
+      width: 100%; height: 320px;
+      font-size: 11px; line-height: 1.8;
+      border: 1px solid #ddd; border-radius: 4px;
+      padding: 10px; box-sizing: border-box;
+      resize: vertical; display: none;
+      font-family: "Hiragino Kaku Gothic ProN", "メイリオ", sans-serif;
+    }
+    #familySummaryActions {
+      display: none; gap: 6px; margin-top: 8px;
+    }
+    #printFamilySummaryBtn {
+      flex: 1; background: #2c3e50; color: white;
+      font-size: 12px; padding: 9px;
+    }
+    #printFamilySummaryBtn:hover { background: #1a252f; }
+    #copyFamilySummaryBtn {
+      flex: 1; background: #3498db; color: white;
+      font-size: 12px; padding: 9px;
+    }
+    #copyFamilySummaryBtn:hover { background: #2980b9; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🩺 Vets SOAP Scribe</h1>
+    <div class="header-btns">
+      <button id="settingsBtn" class="icon-btn" title="設定">⚙️</button>
+    </div>
+  </header>
+
+  <div id="settingsArea">
+    <div class="setting-group">
+      <label>OpenAI API Key</label>
+      <div class="api-key-wrapper">
+        <input type="password" id="apiKey" placeholder="sk-..." />
+        <button class="toggle-key-btn" id="toggleKeyBtn">表示</button>
+      </div>
+      <div class="api-key-saved" id="apiKeySaved">✓ APIキー保存済み</div>
+    </div>
+    <div class="setting-group">
+      <label>Google Sheets Script URL</label>
+      <input type="text" id="gasUrl" placeholder="https://script.google.com/..." />
+    </div>
+    <div class="setting-group">
+      <label>🏥 院内全マスタデータ (患者リスト・会計項目)</label>
+      <div class="csv-upload-row">
+        <button class="csv-upload-btn" id="csvUploadBtn">📂 CSVから読み込む</button>
+        <input type="file" id="csvFileInput" accept=".csv" style="display:none" />
+        <span class="csv-status" id="csvStatus">✓ 読み込み完了</span>
+      </div>
+      <textarea id="refData" placeholder="[患者]&#13;&#10;1001, 田中, ポチ&#13;&#10;..."></textarea>
+      <div class="note"><strong>💡 ヒント:</strong> CSVファイル（患者ID, 飼い主名, 動物名 の列）をそのまま読み込めます。スプレッドシート連携も可。</div>
+    </div>
+    <div class="setting-group">
+      <label>📖 カスタム用語辞書 (薬品名・商品名・略語)</label>
+      <textarea id="customDict" placeholder="アポキル&#13;&#10;リブレラ&#13;&#10;ソレンシア&#13;&#10;シンパリカ&#13;&#10;ネクスガード&#13;&#10;T/d&#13;&#10;..."></textarea>
+      <div class="note"><strong>💡 院独自の薬品名・フード名・略語を1行1語で入力。</strong>音声認識の精度が向上します。NotebookLM等で整理した用語リストを貼り付けられます。</div>
+    </div>
+  </div>
+
+  <div class="slot-container">
+    <div class="slot-card active" data-id="1"><div>カルテ A</div></div>
+    <div class="slot-card" data-id="2"><div>カルテ B</div></div>
+    <div class="slot-card" data-id="3"><div>カルテ C</div></div>
+  </div>
+
+  <div class="main-area" id="mainArea">
+    <div id="mainStatus" class="status-bar">準備完了</div>
+    <input type="text" id="currentTitleEdit" placeholder="カルテ名 (例: 田中 - ポチ)">
+
+    <div class="mode-select-container">
+      <select id="modeSelect">
+        <option value="soap">🩺 診察モード</option>
+        <option value="interview">🗣 受付（Sのみ）</option>
+      </select>
+    </div>
+
+    <!-- 録音中インジケーター -->
+    <div class="recording-indicator" id="recordingIndicator">
+      <div class="rec-dot"></div>
+      <span class="rec-text">録音中</span>
+      <div class="sound-wave">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="recBtn">🎙 録音開始</button>
+      <button id="pauseBtn">⏸ 一時停止 (中座)</button>
+      <button id="stopBtn">✅ 診察終了・カルテ作成</button>
+    </div>
+
+    <div class="preview-box" id="previewBox">
+      <div style="color:#ccc; font-style:italic;">会話内容がここに表示されます...</div>
+    </div>
+
+    <div class="result-area" id="resultArea">
+      <input type="text" class="res-title" id="resTitle">
+      <div id="missingWarning"></div>
+      <label class="result-label">カルテ (SOAP)</label>
+      <textarea class="res-text" id="resSoap"></textarea>
+      <div class="section-copy-btns">
+        <button class="section-copy-btn" data-section="S">S コピー</button>
+        <button class="section-copy-btn" data-section="O">O コピー</button>
+        <button class="section-copy-btn" data-section="A">A コピー</button>
+        <button class="section-copy-btn" data-section="P">P コピー</button>
+        <button class="section-copy-btn" data-section="処置">処置 コピー</button>
+        <button class="section-copy-btn" data-section="MEMO">MEMO コピー</button>
+      </div>
+      <label class="result-label">証拠ログ</label>
+      <textarea class="res-text" id="resFull" readonly></textarea>
+      <button id="copyStockBtn">📋 Stockに全体コピー</button>
+      <button id="familySummaryBtn">📄 ご家族向け要約を作成</button>
+      <div id="cloudMsg">☁️ クラウド保存完了</div>
+    </div>
+  </div>
+
+  <div class="footer-link">
+    <a id="downloadLog">💾 ローカル履歴をCSVで保存</a>
+  </div>
+
+  <!-- ご家族向け要約モーダル -->
+  <div id="familySummaryOverlay">
+    <div id="familySummaryModal">
+      <div class="family-summary-header">
+        <h3>🐾 ご家族向け 診察のご報告</h3>
+        <button id="closeFamilySummaryBtn">✕ 閉じる</button>
+      </div>
+      <div id="familySummaryLoading">
+        <div>AIが平易な言葉に書き直しています...</div>
+        <div style="margin-top:8px;color:#aaa;font-size:10px;">しばらくお待ちください</div>
+      </div>
+      <textarea id="familySummaryContent" readonly></textarea>
+      <div id="familySummaryActions">
+        <button id="printFamilySummaryBtn">🖨️ 印刷プレビュー</button>
+        <button id="copyFamilySummaryBtn">📋 テキストをコピー</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

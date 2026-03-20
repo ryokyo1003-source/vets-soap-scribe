@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vets SOAP Scribe</title>
+  <style>
+    :root {
+      --primary: #1a6b9a;
+      --primary-dark: #135175;
+      --primary-light: #e8f4fb;
+      --green: #27ae60;
+      --green-dark: #1e8449;
+      --orange: #f39c12;
+      --red: #e74c3c;
+      --bg: #f0f4f8;
+      --surface: #ffffff;
+      --border: #dde2ea;
+      --text: #1e2a35;
+      --muted: #64748b;
+      --sidebar-w: 270px;
+      --header-h: 52px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Hiragino Kaku Gothic ProN", "メイリオ", system-ui, sans-serif;
+      font-size: 13px;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ─── Header ─── */
+    #appHeader {
+      position: fixed; top: 0; left: 0; right: 0;
+      height: var(--header-h);
+      background: var(--primary);
+      color: #fff;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 16px;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    #appHeader h1 { font-size: 16px; font-weight: bold; letter-spacing: 0.02em; }
+    .header-actions { display: flex; gap: 8px; }
+    .header-btn {
+      background: rgba(255,255,255,0.15); border: none; color: #fff;
+      padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;
+      font-weight: bold; transition: background 0.15s;
+    }
+    .header-btn:hover { background: rgba(255,255,255,0.3); }
+
+    /* ─── Layout ─── */
+    #layout {
+      display: flex;
+      margin-top: var(--header-h);
+      height: calc(100vh - var(--header-h));
+      overflow: hidden;
+    }
+
+    /* ─── Sidebar ─── */
+    #sidebar {
+      width: var(--sidebar-w);
+      min-width: var(--sidebar-w);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .sidebar-top { padding: 12px; border-bottom: 1px solid var(--border); }
+    #newPatientBtn {
+      width: 100%; padding: 9px; background: var(--primary); color: #fff;
+      border: none; border-radius: 7px; font-weight: bold; font-size: 13px;
+      cursor: pointer; transition: background 0.15s; margin-bottom: 8px;
+    }
+    #newPatientBtn:hover { background: var(--primary-dark); }
+    #searchInput {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+      border-radius: 6px; font-size: 12px; outline: none;
+      background: var(--bg);
+    }
+    #searchInput:focus { border-color: var(--primary); background: #fff; }
+
+    #patientList {
+      flex: 1; overflow-y: auto; padding: 6px 0;
+    }
+    .patient-item {
+      padding: 10px 14px; cursor: pointer; border-left: 3px solid transparent;
+      transition: background 0.12s; border-bottom: 1px solid #f5f5f5;
+    }
+    .patient-item:hover { background: var(--primary-light); }
+    .patient-item.active { background: var(--primary-light); border-left-color: var(--primary); }
+    .pt-name { font-weight: bold; font-size: 13px; color: var(--text); }
+    .pt-animal { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .pt-chart { font-size: 10px; color: #aaa; float: right; }
+    .no-patients {
+      padding: 30px 16px; text-align: center; color: var(--muted); font-size: 12px;
+    }
+
+    /* ─── Main content ─── */
+    #mainContent {
+      flex: 1; overflow-y: auto; background: var(--bg);
+    }
+
+    /* ─── Views ─── */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* Welcome view */
+    #viewWelcome {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100%; color: var(--muted); text-align: center; padding: 40px;
+    }
+    #viewWelcome .welcome-icon { font-size: 48px; margin-bottom: 16px; }
+    #viewWelcome h2 { font-size: 18px; color: var(--text); margin-bottom: 8px; }
+    #viewWelcome p { font-size: 13px; line-height: 1.7; }
+
+    /* Patient view */
+    #viewPatient { padding: 16px; }
+
+    .patient-header {
+      background: var(--surface); border-radius: 10px; padding: 16px 20px;
+      margin-bottom: 14px;
+      border: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: flex-start;
+      gap: 12px;
+    }
+    .patient-header-info h2 { font-size: 18px; color: var(--text); }
+    .patient-header-info .pt-details {
+      font-size: 12px; color: var(--muted); margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap;
+    }
+    .patient-header-info .pt-details span::before { content: "·"; margin-right: 4px; color: #ccc; }
+    .patient-header-info .pt-details span:first-child::before { content: ""; margin: 0; }
+    .patient-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .btn-sm {
+      padding: 6px 12px; border: none; border-radius: 6px; font-size: 12px;
+      cursor: pointer; font-weight: bold; transition: 0.15s;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-secondary { background: #f0f0f0; color: #555; }
+    .btn-secondary:hover { background: #e0e0e0; }
+    .btn-danger { background: #fdecea; color: var(--red); }
+    .btn-danger:hover { background: var(--red); color: #fff; }
+    .btn-green { background: var(--green); color: #fff; }
+    .btn-green:hover { background: var(--green-dark); }
+
+    /* Recording panel */
+    #recordingPanel {
+      background: var(--surface); border-radius: 10px; padding: 18px 20px;
+      margin-bottom: 14px; border: 1px solid var(--border);
+    }
+    .rec-panel-title {
+      font-size: 13px; font-weight: bold; color: var(--muted); margin-bottom: 12px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .mode-select-row {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+    }
+    .mode-select-row label { font-size: 12px; color: var(--muted); }
+    #modeSelect {
+      padding: 6px 12px; border: 1px solid var(--border); border-radius: 20px;
+      font-size: 12px; font-weight: bold; background: var(--bg); cursor: pointer;
+      outline: none; color: var(--text);
+    }
+    #modeSelect:focus { border-color: var(--primary); }
+
+    #recStartBtn {
+      width: 100%; padding: 14px; background: var(--primary); color: #fff;
+      border: none; border-radius: 8px; font-size: 15px; font-weight: bold;
+      cursor: pointer; transition: background 0.15s; margin-bottom: 8px;
+    }
+    #recStartBtn:hover { background: var(--primary-dark); }
+
+    .recording-status {
+      display: none;
+      background: linear-gradient(135deg, #fef0ee, #fff8f8);
+      border: 2px solid var(--red); border-radius: 10px;
+      padding: 14px 16px; margin-bottom: 12px;
+      align-items: center; gap: 12px;
+    }
+    .recording-status.active { display: flex; }
+    .rec-dot {
+      width: 12px; height: 12px; background: var(--red); border-radius: 50%;
+      animation: blink 1s ease-in-out infinite; flex-shrink: 0;
+    }
+    @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+    .rec-info { flex: 1; }
+    .rec-info .rec-label { font-size: 12px; font-weight: bold; color: var(--red); }
+    .rec-info #recTimer { font-size: 20px; font-weight: bold; color: var(--text); font-variant-numeric: tabular-nums; }
+
+    .rec-paused-status {
+      display: none; background: #fffbf0; border: 2px solid var(--orange);
+      border-radius: 10px; padding: 10px 16px; margin-bottom: 12px;
+      align-items: center; gap: 8px; font-size: 13px; font-weight: bold; color: var(--orange);
+    }
+    .rec-paused-status.active { display: flex; }
+
+    .rec-buttons { display: flex; gap: 8px; }
+    #recPauseBtn { flex: 1; padding: 11px; background: var(--orange); color: #fff; border: none; border-radius: 7px; font-weight: bold; cursor: pointer; display: none; }
+    #recStopBtn { flex: 2; padding: 11px; background: var(--red); color: #fff; border: none; border-radius: 7px; font-weight: bold; cursor: pointer; display: none; }
+    #recResumeBtn { flex: 1; padding: 11px; background: var(--primary); color: #fff; border: none; border-radius: 7px; font-weight: bold; cursor: pointer; display: none; }
+
+    .processing-status {
+      display: none; background: #f0f9ff; border-left: 4px solid var(--primary);
+      padding: 12px 16px; border-radius: 0 8px 8px 0;
+      font-size: 13px; color: var(--primary); font-weight: bold; margin-top: 12px;
+    }
+    .processing-status.active { display: block; }
+
+    /* SOAP result */
+    #soapResult { display: none; background: var(--surface); border-radius: 10px; padding: 18px 20px; margin-bottom: 14px; border: 1px solid var(--border); }
+    #missingWarning {
+      display: none; padding: 10px 14px; background: #fff3cd; border: 1px solid #ffc107;
+      color: #856404; border-radius: 7px; font-size: 12px; margin-bottom: 12px;
+    }
+    .result-label { font-size: 11px; font-weight: bold; color: var(--muted); margin-bottom: 5px; display: block; }
+    #resSoap {
+      width: 100%; height: 200px; padding: 10px; font-size: 12px; font-family: monospace;
+      border: 1px solid var(--border); border-radius: 6px; resize: vertical;
+    }
+    #resFull {
+      width: 100%; height: 70px; padding: 8px; font-size: 11px; font-family: monospace;
+      border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--muted);
+      resize: none;
+    }
+    .section-copy-btns { display: flex; flex-wrap: wrap; gap: 5px; margin: 10px 0; }
+    .section-copy-btn {
+      padding: 5px 10px; font-size: 11px; font-weight: bold; border: 1px solid var(--border);
+      border-radius: 5px; background: #f7f7f7; color: var(--text); cursor: pointer; transition: 0.12s;
+    }
+    .section-copy-btn:hover { background: #e8e8e8; }
+    .section-copy-btn.copied { background: var(--green); color: #fff; border-color: var(--green-dark); }
+    .result-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    #copyStockBtn { background: #2c3e50; color: #fff; }
+    #saveVisitBtn { background: var(--green); color: #fff; }
+
+    /* Visit history */
+    #visitHistory { margin-top: 6px; }
+    .history-title {
+      font-size: 12px; font-weight: bold; color: var(--muted); padding: 8px 0; margin-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .visit-card {
+      background: var(--surface); border-radius: 8px; border: 1px solid var(--border);
+      margin-bottom: 8px; overflow: hidden; transition: box-shadow 0.15s;
+    }
+    .visit-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .visit-card-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 14px; cursor: pointer; user-select: none;
+    }
+    .visit-card-header:hover { background: #fafafa; }
+    .visit-date { font-weight: bold; font-size: 13px; flex-shrink: 0; }
+    .visit-mode-badge {
+      font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: bold; flex-shrink: 0;
+    }
+    .visit-mode-badge.soap { background: var(--primary-light); color: var(--primary); }
+    .visit-mode-badge.interview { background: #fffbf0; color: var(--orange); }
+    .visit-preview { flex: 1; font-size: 12px; color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .visit-toggle { font-size: 10px; color: #aaa; flex-shrink: 0; transition: transform 0.2s; }
+    .visit-card.expanded .visit-toggle { transform: rotate(180deg); }
+    .visit-card-body { display: none; padding: 14px; border-top: 1px solid var(--border); }
+    .visit-card.expanded .visit-card-body { display: block; }
+    .visit-soap-text {
+      width: 100%; height: 180px; padding: 8px; font-size: 11px; font-family: monospace;
+      border: 1px solid var(--border); border-radius: 5px; resize: vertical;
+    }
+    .visit-full-text {
+      width: 100%; height: 55px; padding: 6px; font-size: 10px; font-family: monospace;
+      border: 1px solid var(--border); border-radius: 5px; background: var(--bg);
+      color: var(--muted); resize: none; margin-top: 6px;
+    }
+    .visit-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .no-visits { padding: 24px; text-align: center; color: var(--muted); font-size: 12px; }
+
+    /* ─── Modals ─── */
+    #modalOverlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.55); z-index: 200;
+      justify-content: center; align-items: flex-start;
+      padding: 40px 16px; overflow-y: auto;
+    }
+    #modalOverlay.active { display: flex; }
+    .modal {
+      background: var(--surface); border-radius: 12px;
+      width: 100%; max-width: 520px; padding: 24px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      margin: auto;
+    }
+    .modal-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 18px; padding-bottom: 12px; border-bottom: 2px solid var(--primary);
+    }
+    .modal-header h3 { font-size: 15px; color: var(--text); }
+    .modal-close {
+      background: #eee; border: none; padding: 5px 10px; border-radius: 5px;
+      cursor: pointer; font-size: 12px; color: #666;
+    }
+    .modal-close:hover { background: #ddd; }
+
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 11px; font-weight: bold; color: var(--muted); margin-bottom: 5px; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+      font-size: 13px; outline: none; font-family: inherit;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--primary); }
+    .form-group textarea { height: 90px; resize: vertical; font-family: monospace; font-size: 11px; }
+    .form-row { display: flex; gap: 10px; }
+    .form-row .form-group { flex: 1; }
+    .form-hint { font-size: 10px; color: #aaa; margin-top: 4px; }
+    .modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+    .btn-modal {
+      padding: 9px 20px; border: none; border-radius: 7px; font-size: 13px;
+      font-weight: bold; cursor: pointer; transition: 0.15s;
+    }
+    .btn-modal.primary { background: var(--primary); color: #fff; }
+    .btn-modal.primary:hover { background: var(--primary-dark); }
+    .btn-modal.cancel { background: #f0f0f0; color: #555; }
+    .btn-modal.cancel:hover { background: #e0e0e0; }
+
+    /* Family summary modal */
+    #familySummaryModal {
+      background: var(--surface); border-radius: 12px;
+      width: 100%; max-width: 560px; padding: 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      margin: auto;
+    }
+    #familySummaryContent {
+      width: 100%; height: 360px; padding: 10px; font-size: 12px;
+      font-family: "Hiragino Kaku Gothic ProN", "メイリオ", sans-serif;
+      line-height: 1.9; border: 1px solid var(--border); border-radius: 6px;
+      resize: vertical; display: none;
+    }
+    #familySummaryLoading { padding: 40px; text-align: center; color: var(--muted); }
+    #familySummaryActions { display: none; gap: 8px; margin-top: 10px; }
+
+    /* Settings modal */
+    #settingsModal { max-width: 560px; }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 20px; right: 20px; z-index: 999;
+      padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: bold;
+      color: #fff; display: none; animation: slideIn 0.2s ease;
+      max-width: 320px;
+    }
+    @keyframes slideIn { from { transform: translateY(20px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+    #toast.success { background: var(--green); }
+    #toast.error { background: var(--red); }
+    #toast.info { background: var(--primary); }
+
+    /* ─── CSV Sync ─── */
+    .csv-sync-bar {
+      padding: 8px 12px; border-top: 1px solid var(--border);
+      background: #f8fafc; display: flex; align-items: center; gap: 6px;
+    }
+    #csvPickBtn {
+      flex-shrink: 0; padding: 6px 10px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 6px;
+      font-size: 11px; font-weight: bold; cursor: pointer; color: var(--text);
+      transition: 0.15s; white-space: nowrap;
+    }
+    #csvPickBtn:hover { background: var(--primary-light); border-color: var(--primary); color: var(--primary); }
+    #csvSyncStatus {
+      flex: 1; font-size: 10px; color: var(--muted); overflow: hidden;
+      white-space: nowrap; text-overflow: ellipsis; line-height: 1.3;
+    }
+    #csvSyncStatus.linked { color: var(--green); }
+    #csvSyncStatus.error  { color: var(--red); }
+    #csvRefreshBtn {
+      flex-shrink: 0; padding: 5px 7px; background: none; border: 1px solid var(--border);
+      border-radius: 5px; cursor: pointer; font-size: 13px; display: none;
+      transition: 0.15s;
+    }
+    #csvRefreshBtn:hover { background: var(--primary-light); border-color: var(--primary); }
+    #csvRefreshBtn.spinning { animation: spin 1s linear infinite; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    /* CSV Drop Zone */
+    .csv-drop-zone {
+      padding: 10px 8px; border: 2px dashed var(--border);
+      border-radius: 8px; text-align: center; cursor: pointer;
+      transition: 0.2s; margin: 6px 10px; background: var(--bg);
+      font-size: 11px; color: var(--muted); line-height: 1.4;
+    }
+    .csv-drop-zone:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+    .csv-drop-zone.dragover { border-color: var(--green); background: #e8f8f0; color: var(--green); transform: scale(1.02); }
+    .csv-drop-zone.loaded { border-color: var(--green); border-style: solid; color: var(--green); background: #f0faf4; }
+    .csv-drop-zone .drop-icon { font-size: 18px; display: block; margin-bottom: 2px; }
+    .csv-patient-count { font-size: 10px; color: var(--green); font-weight: bold; margin-top: 2px; }
+
+    /* CSV mapping modal */
+    #csvMappingModal { max-width: 580px; }
+    .csv-file-info { font-size: 12px; color: var(--muted); background: var(--bg); padding: 8px 12px; border-radius: 6px; margin-bottom: 14px; }
+    .map-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin-bottom: 14px; }
+    .map-grid .form-group { margin-bottom: 0; }
+    .map-grid select { font-size: 12px; }
+    #csvPreviewWrap { margin: 12px 0; overflow-x: auto; max-height: 130px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; }
+    #csvPreviewWrap table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    #csvPreviewWrap th { background: var(--bg); padding: 4px 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+    #csvPreviewWrap td { padding: 3px 8px; border-bottom: 1px solid #f5f5f5; white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+    .csv-result-badge { display: inline-block; padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: bold; margin-right: 6px; }
+    .csv-result-badge.added { background: #d4edda; color: #155724; }
+    .csv-result-badge.updated { background: #cce5ff; color: #004085; }
+    .csv-result-badge.unchanged { background: #f8f9fa; color: #6c757d; }
+
+    /* Responsive */
+    @media (max-width: 700px) {
+      #sidebar { display: none; }
+      #sidebar.open { display: flex; position: fixed; inset: var(--header-h) auto 0 0; z-index: 50; box-shadow: 4px 0 16px rgba(0,0,0,0.1); }
+      .header-btn.menu-btn { display: block; }
+    }
+
+    /* Section divider */
+    .divider { height: 1px; background: var(--border); margin: 14px 0; }
+
+    /* Utility */
+    .text-muted { color: var(--muted); }
+    .mt-8 { margin-top: 8px; }
+  </style>
+</head>
+<body>
+
+<!-- ─── Header ─── -->
+<header id="appHeader">
+  <h1>🩺 Vets SOAP Scribe</h1>
+  <div class="header-actions">
+    <button class="header-btn" id="exportCsvBtn">💾 CSV出力</button>
+    <button class="header-btn" id="settingsBtn">⚙️ 設定</button>
+  </div>
+</header>
+
+<!-- ─── Layout ─── -->
+<div id="layout">
+
+  <!-- Sidebar -->
+  <aside id="sidebar">
+    <div class="sidebar-top">
+      <button id="newPatientBtn">＋ 新規患者登録</button>
+      <input type="text" id="searchInput" placeholder="🔍 患者名 / カルテ番号">
+    </div>
+    <div id="patientList">
+      <div class="no-patients">患者を登録してください</div>
+    </div>
+
+    <!-- CSV ドラッグ＆ドロップ -->
+    <div class="csv-drop-zone" id="csvDropZone">
+      <span class="drop-icon">📂</span>
+      ハロペCSVをドロップ or クリック
+    </div>
+    <input type="file" id="csvFileInputHidden" accept=".csv" style="display:none">
+
+    <!-- CSV同期バー -->
+    <div class="csv-sync-bar">
+      <button id="csvPickBtn">📂 CSV連携</button>
+      <div id="csvSyncStatus">未設定</div>
+      <button id="csvRefreshBtn" title="今すぐ同期">🔄</button>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main id="mainContent">
+
+    <!-- Welcome view -->
+    <div id="viewWelcome" class="view active">
+      <div class="welcome-icon">🩺</div>
+      <h2>Vets SOAP Scribe</h2>
+      <p>左のサイドバーから患者を選択するか、<br>新規患者を登録して診察を開始してください。</p>
+      <p class="text-muted mt-8" style="font-size:11px;">⚠️ マイク使用のため、HTTPサーバー経由で開いてください。<br><code>python3 -m http.server 8080</code> → http://localhost:8080</p>
+    </div>
+
+    <!-- Patient view -->
+    <div id="viewPatient" class="view">
+
+      <!-- Patient header -->
+      <div class="patient-header">
+        <div class="patient-header-info">
+          <h2 id="ptHeaderName"></h2>
+          <div class="pt-details" id="ptHeaderDetails"></div>
+        </div>
+        <div class="patient-header-actions">
+          <button class="btn-sm btn-secondary" id="editPatientBtn">✏️ 編集</button>
+        </div>
+      </div>
+
+      <!-- Recording panel -->
+      <div id="recordingPanel">
+        <div class="rec-panel-title">🎙 新規診察録音</div>
+        <div class="mode-select-row">
+          <label>モード：</label>
+          <select id="modeSelect">
+            <option value="soap">🩺 診察モード（SOAP全体）</option>
+            <option value="interview">🗣 受付（Sのみ）</option>
+          </select>
+        </div>
+
+        <button id="recStartBtn">🎙 録音開始</button>
+
+        <div class="recording-status" id="recordingStatus">
+          <div class="rec-dot"></div>
+          <div class="rec-info">
+            <div class="rec-label">録音中</div>
+            <div id="recTimer">00:00</div>
+          </div>
+        </div>
+
+        <div class="rec-paused-status" id="recPausedStatus">
+          ⏸ 一時停止中 — 録音再開ボタンで続きを録音できます
+        </div>
+
+        <div class="rec-buttons">
+          <button id="recPauseBtn">⏸ 一時停止</button>
+          <button id="recResumeBtn">▶ 録音再開</button>
+          <button id="recStopBtn">✅ 診察終了・カルテ作成</button>
+        </div>
+
+        <div class="processing-status" id="processingStatus"></div>
+      </div>
+
+      <!-- SOAP result (new visit) -->
+      <div id="soapResult">
+        <div id="missingWarning"></div>
+        <label class="result-label">カルテ (SOAP)</label>
+        <textarea id="resSoap"></textarea>
+        <div class="section-copy-btns">
+          <button class="section-copy-btn" data-section="S">S</button>
+          <button class="section-copy-btn" data-section="O">O</button>
+          <button class="section-copy-btn" data-section="A">A</button>
+          <button class="section-copy-btn" data-section="P">P</button>
+          <button class="section-copy-btn" data-section="処置">処置</button>
+          <button class="section-copy-btn" data-section="MEMO">MEMO</button>
+        </div>
+        <label class="result-label">会話ログ</label>
+        <textarea id="resFull" readonly></textarea>
+        <div class="result-actions">
+          <button class="btn-sm btn-modal primary" id="copyStockBtn">📋 まとめてコピー</button>
+          <button class="btn-sm btn-green" id="saveVisitBtn">💾 カルテに保存</button>
+          <button class="btn-sm btn-secondary" id="familySummaryNewBtn">📄 ご家族向け要約</button>
+        </div>
+      </div>
+
+      <!-- Visit history -->
+      <div id="visitHistory">
+        <div class="history-title">診察履歴</div>
+        <div id="visitList"></div>
+      </div>
+
+    </div><!-- /viewPatient -->
+
+  </main>
+</div>
+
+<!-- ─── Modals ─── -->
+<div id="modalOverlay">
+
+  <!-- New / Edit patient -->
+  <div class="modal" id="patientFormModal" style="display:none">
+    <div class="modal-header">
+      <h3 id="patientFormTitle">新規患者登録</h3>
+      <button class="modal-close" data-close="patientForm">✕</button>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>カルテ番号（空欄で自動発行）</label>
+        <input type="text" id="fChartNo" placeholder="P-001">
+      </div>
+      <div class="form-group">
+        <label>種別</label>
+        <select id="fSpecies">
+          <option value="犬">犬</option>
+          <option value="猫">猫</option>
+          <option value="うさぎ">うさぎ</option>
+          <option value="鳥">鳥</option>
+          <option value="その他">その他</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>飼い主名 *</label>
+        <input type="text" id="fOwnerName" placeholder="田中">
+      </div>
+      <div class="form-group">
+        <label>動物名 *</label>
+        <input type="text" id="fAnimalName" placeholder="ポチ">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>品種</label>
+        <input type="text" id="fBreed" placeholder="チワワ">
+      </div>
+      <div class="form-group">
+        <label>性別</label>
+        <select id="fSex">
+          <option value="">不明</option>
+          <option value="オス">オス</option>
+          <option value="メス">メス</option>
+          <option value="去勢済み">去勢済み</option>
+          <option value="避妊済み">避妊済み</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>生年月日</label>
+        <input type="date" id="fBirthDate">
+      </div>
+      <div class="form-group">
+        <label>体重 (kg)</label>
+        <input type="number" id="fWeight" step="0.1" min="0" placeholder="3.5">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>備考</label>
+      <textarea id="fNotes" placeholder="既往歴、アレルギー等"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-modal cancel" data-close="patientForm">キャンセル</button>
+      <button class="btn-modal primary" id="savePatientBtn">登録する</button>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="modal" id="settingsModal" style="display:none">
+    <div class="modal-header">
+      <h3>⚙️ 設定</h3>
+      <button class="modal-close" data-close="settings">✕</button>
+    </div>
+    <div class="form-group">
+      <label>OpenAI API Key</label>
+      <input type="password" id="sApiKey" placeholder="sk-...">
+    </div>
+    <div class="form-group">
+      <label>Google Sheets Script URL（任意）</label>
+      <input type="text" id="sGasUrl" placeholder="https://script.google.com/...">
+    </div>
+    <div class="form-group">
+      <label>院内マスタデータ（患者リスト・会計項目）</label>
+      <textarea id="sRefData" style="height:100px" placeholder="[患者]&#13;&#10;1001, 田中, ポチ"></textarea>
+    </div>
+    <div class="form-group">
+      <label>カスタム用語辞書（1行1語）</label>
+      <textarea id="sCustomDict" placeholder="アポキル&#13;&#10;リブレラ&#13;&#10;ソレンシア"></textarea>
+      <div class="form-hint">院内独自の薬品名・フード名・略語を入力すると認識精度が上がります</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-modal cancel" data-close="settings">閉じる</button>
+      <button class="btn-modal primary" id="saveSettingsBtn">保存</button>
+    </div>
+  </div>
+
+  <!-- CSV mapping modal -->
+  <div class="modal" id="csvMappingModal" style="display:none">
+    <div class="modal-header">
+      <h3>📂 CSV列マッピング確認</h3>
+      <button class="modal-close" data-close="csvMapping">✕</button>
+    </div>
+    <div class="csv-file-info" id="csvFileInfo">ファイル情報</div>
+
+    <div class="map-grid">
+      <div class="form-group"><label>カルテ番号</label><select id="map-chartNo"></select></div>
+      <div class="form-group"><label>飼い主名 *</label><select id="map-ownerName"></select></div>
+      <div class="form-group"><label>動物名 *</label><select id="map-animalName"></select></div>
+      <div class="form-group"><label>種別（犬/猫等）</label><select id="map-species"></select></div>
+      <div class="form-group"><label>品種</label><select id="map-breed"></select></div>
+      <div class="form-group"><label>性別</label><select id="map-sex"></select></div>
+      <div class="form-group"><label>生年月日</label><select id="map-birthDate"></select></div>
+      <div class="form-group"><label>体重(kg)</label><select id="map-weight"></select></div>
+    </div>
+
+    <label class="result-label">プレビュー（先頭5行）</label>
+    <div id="csvPreviewWrap"><table id="csvPreviewTable"></table></div>
+
+    <div class="form-group" style="margin-top:12px">
+      <label>自動同期間隔</label>
+      <select id="csvIntervalSelect">
+        <option value="0">手動のみ（自動更新しない）</option>
+        <option value="120" selected>2分ごとに自動チェック</option>
+        <option value="300">5分ごとに自動チェック</option>
+        <option value="600">10分ごとに自動チェック</option>
+      </select>
+      <div class="form-hint">CSVファイルが更新されると自動で患者リストに反映されます（Chromeのみ）</div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-modal cancel" data-close="csvMapping">キャンセル</button>
+      <button class="btn-modal primary" id="csvDoImportBtn">この設定で読み込む</button>
+    </div>
+  </div>
+
+  <!-- Family summary -->
+  <div id="familySummaryModal" style="display:none">
+    <div class="modal-header">
+      <h3>🐾 ご家族向け 診察のご報告</h3>
+      <button class="modal-close" data-close="familySummary">✕</button>
+    </div>
+    <div id="familySummaryLoading">AIが平易な言葉に書き直しています...</div>
+    <textarea id="familySummaryContent" readonly></textarea>
+    <div id="familySummaryActions">
+      <button class="btn-modal primary" id="printFamilySummaryBtn">🖨️ 印刷プレビュー</button>
+      <button class="btn-modal cancel" id="copyFamilySummaryBtn">📋 コピー</button>
+    </div>
+  </div>
+
+</div><!-- /modalOverlay -->
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

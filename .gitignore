@@ -1,0 +1,10 @@
+.DS_Store
+dist/
+store_images/
+docs/
+*.gsheet
+generate_store_images.py
+bump-version.sh
+package.sh
+DEPLOY.md
+.claude/
