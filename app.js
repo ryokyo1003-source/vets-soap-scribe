@@ -496,7 +496,7 @@ var UI = {
       var active = p.id === State.currentPatientId ? ' active' : '';
       return '<div class="patient-item' + active + '" data-id="' + p.id + '">'
         + '<span class="pt-chart">' + (p.chartNo || '') + '</span>'
-        + '<div class="pt-name">' + icon + ' ' + (p.ownerName || '') + '　' + (p.animalName || '') + '</div>'
+        + '<div class="pt-name">' + icon + ' ' + (p.ownerName || '') + '　<b>' + (p.animalName || '') + '</b></div>'
         + '<div class="pt-animal">' + [p.species, p.breed, p.sex].filter(Boolean).join(' · ') + '</div>'
         + '</div>';
     }).join('');
@@ -915,14 +915,16 @@ var CSVSync = {
   _detectColumns: function (headers) {
     // ハロペ・各社電カル対応パターン
     var patterns = {
-      chartNo:    /カルテ|患者番号|患者No|患者ID|診察券|chart.*no|patientid|^No\.?$|^ID$/i,
-      ownerName:  /飼い主|飼主|オーナー|owner|姓名|氏名|顧客名/i,
-      animalName: /動物名|患者名|ペット名|名前(?!.*飼)|animal|pet(?!.*type)|ペット/i,
-      species:    /種別|種類|species|animal.*type|pet.*type|犬猫|動物種/i,
-      breed:      /品種|犬種|猫種|breed/i,
-      sex:        /性別|sex|gender/i,
-      birthDate:  /生年月日|誕生日|birth/i,
-      weight:     /体重|weight/i
+      chartNo:    /^karte_number$|カルテ番号|カルテNo|患者番号|患者No|診察券/i,
+      ownerName:  /^owner_name$|飼い主名|飼主名|飼い主|飼主|オーナー名/i,
+      animalName: /^pet_name$|動物名|患者名|ペット名/i,
+      species:    /^species$|種別|種類|動物種|犬猫/i,
+      breed:      /^breed$|品種|犬種|猫種/i,
+      sex:        /^sex$|^gender$|性別/i,
+      birthDate:  /^birth|生年月日|誕生日/i,
+      weight:     /^weight$|体重/i,
+      // ハロペ固有: カルテ番号生成用
+      ownerNumber: /^owner_number$|飼主番号|顧客番号|オーナー番号/i
     };
     var mapping = {};
     Object.keys(patterns).forEach(function (key) {
@@ -987,6 +989,9 @@ var CSVSync = {
       var sel = document.getElementById('map-' + f);
       mapping[f] = sel ? parseInt(sel.value, 10) : -1;
     });
+    // ownerNumber は自動検出から引き継ぐ（マッピングモーダルに表示しない）
+    var autoMap = this._detectColumns(this._headers);
+    if (autoMap.ownerNumber >= 0) mapping.ownerNumber = autoMap.ownerNumber;
     var interval = parseInt((document.getElementById('csvIntervalSelect') || {}).value, 10) || 0;
 
     this._mapping  = mapping;
@@ -1020,7 +1025,23 @@ var CSVSync = {
       var chartNo   = m.chartNo    >= 0 ? (row[m.chartNo]    || '').trim() : '';
       var ownerName = m.ownerName  >= 0 ? (row[m.ownerName]  || '').trim() : '';
       var animalName = m.animalName >= 0 ? (row[m.animalName] || '').trim() : '';
+      // 飼い主名・動物名の両方が空、または「新患」「初診」のテスト行はスキップ
       if (!ownerName && !animalName) continue;
+      if (/^(初診|新患|テスト)\d*/.test(ownerName)) continue;
+
+      // ハロペ: karte_numberが空の場合、owner_number から生成を試みる
+      if (!chartNo && m.ownerNumber >= 0) {
+        var ownerNum = (row[m.ownerNumber] || '').trim();
+        if (ownerNum) {
+          // 同じowner_numberのペット数をカウントして連番を付与
+          var sameOwnerCount = 0;
+          for (var j = 0; j < i; j++) {
+            var prevOwnerNum = (this._rows[j][m.ownerNumber] || '').trim();
+            if (prevOwnerNum === ownerNum) sameOwnerCount++;
+          }
+          chartNo = ownerNum.padStart(5, '0') + '-' + String(sameOwnerCount + 1).padStart(2, '0');
+        }
+      }
 
       // Find existing patient by chartNo, then by name pair
       var existing = null;
