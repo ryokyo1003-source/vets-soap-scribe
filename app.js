@@ -490,14 +490,12 @@ var UI = {
       el.innerHTML = '<div class="no-patients">' + (q ? '該当患者なし' : '患者を登録してください') + '</div>';
       return;
     }
-    var speciesIcon = { '犬':'🐕', '猫':'🐈', 'うさぎ':'🐇', '鳥':'🐦' };
     el.innerHTML = list.map(function (p) {
-      var icon = speciesIcon[p.species] || '🐾';
       var active = p.id === State.currentPatientId ? ' active' : '';
+      var chartLabel = p.chartNo ? p.chartNo : '';
       return '<div class="patient-item' + active + '" data-id="' + p.id + '">'
-        + '<span class="pt-chart">' + (p.chartNo || '') + '</span>'
-        + '<div class="pt-name">' + icon + ' ' + (p.ownerName || '') + '　<b>' + (p.animalName || '') + '</b></div>'
-        + '<div class="pt-animal">' + [p.species, p.breed, p.sex].filter(Boolean).join(' · ') + '</div>'
+        + '<div class="pt-chart-line">' + chartLabel + '</div>'
+        + '<div class="pt-name">' + (p.ownerName || '') + '　<b>' + (p.animalName || '') + '</b></div>'
         + '</div>';
     }).join('');
   },
