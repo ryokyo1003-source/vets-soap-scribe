@@ -107,12 +107,12 @@
     }
 
     /* ─── Views ─── */
-    .view { display: none; }
-    .view.active { display: block; }
+    .view { display: none !important; }
+    .view.active { display: block !important; }
 
     /* Welcome view */
-    #viewWelcome {
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    #viewWelcome.active {
+      display: flex !important; flex-direction: column; align-items: center; justify-content: center;
       height: 100%; color: var(--muted); text-align: center; padding: 40px;
     }
     #viewWelcome .welcome-icon { font-size: 48px; margin-bottom: 16px; }
@@ -120,11 +120,11 @@
     #viewWelcome p { font-size: 13px; line-height: 1.7; }
 
     /* Patient view */
-    #viewPatient { padding: 16px; }
+    #viewPatient { padding: 12px 16px; }
 
     .patient-header {
-      background: var(--surface); border-radius: 10px; padding: 16px 20px;
-      margin-bottom: 14px;
+      background: var(--surface); border-radius: 10px; padding: 12px 16px;
+      margin-bottom: 10px;
       border: 1px solid var(--border);
       display: flex; justify-content: space-between; align-items: flex-start;
       gap: 12px;
@@ -151,11 +151,11 @@
 
     /* Recording panel */
     #recordingPanel {
-      background: var(--surface); border-radius: 10px; padding: 18px 20px;
-      margin-bottom: 14px; border: 1px solid var(--border);
+      background: var(--surface); border-radius: 10px; padding: 14px 16px;
+      margin-bottom: 10px; border: 1px solid var(--border);
     }
     .rec-panel-title {
-      font-size: 13px; font-weight: bold; color: var(--muted); margin-bottom: 12px;
+      font-size: 13px; font-weight: bold; color: var(--muted); margin-bottom: 8px;
       display: flex; align-items: center; gap: 6px;
     }
     .mode-select-row {
