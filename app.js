@@ -501,7 +501,9 @@ var UI = {
   },
 
   renderPatientView: async function (patientId) {
+    console.log('[VSS] renderPatientView called, patientId:', patientId);
     var p = await DB.patients.get(patientId);
+    console.log('[VSS] patient found:', !!p, p ? p.ownerName + ' ' + p.animalName : 'null');
     if (!p) return;
     State.currentPatientId = patientId;
     State.currentPatient   = p;
@@ -1304,6 +1306,7 @@ function bindEvents() {
   // Patient list click (delegated)
   document.getElementById('patientList').addEventListener('click', function (e) {
     var item = e.target.closest('.patient-item');
+    console.log('[VSS] patientList click, item:', item, 'id:', item ? item.dataset.id : 'none');
     if (item) UI.renderPatientView(item.dataset.id);
   });
 
