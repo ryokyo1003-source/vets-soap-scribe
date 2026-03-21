@@ -501,17 +501,18 @@ var UI = {
   },
 
   renderPatientView: async function (patientId) {
-    console.log('[VSS] renderPatientView called, patientId:', patientId);
     var p = await DB.patients.get(patientId);
-    console.log('[VSS] patient found:', !!p, p ? p.ownerName + ' ' + p.animalName : 'null');
     if (!p) return;
     State.currentPatientId = patientId;
     State.currentPatient   = p;
 
+    // まずビューを切り替え（エラーがあっても画面は遷移する）
+    UI.showView('viewPatient');
+
     // Header
-    var icon = { '犬':'🐕', '猫':'🐈', 'うさぎ':'🐇', '鳥':'🐦' }[p.species] || '🐾';
-    document.getElementById('ptHeaderName').textContent = icon + ' ' + (p.ownerName || '') + '　' + (p.animalName || '');
-    var details = [p.chartNo, p.species, p.breed, p.sex,
+    var chartLabel = p.chartNo ? 'カルテNo.' + p.chartNo : '';
+    document.getElementById('ptHeaderName').textContent = (p.ownerName || '') + '　' + (p.animalName || '');
+    var details = [chartLabel, p.species, p.breed, p.sex,
       p.birthDate ? (new Date()).getFullYear() - new Date(p.birthDate).getFullYear() + '歳' : '',
       p.weight ? p.weight + 'kg' : ''
     ].filter(Boolean);
@@ -527,16 +528,20 @@ var UI = {
     State.pendingVisitData = null;
 
     // Visit history
-    var visits = await DB.visits.byPatient(patientId);
-    visits.sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
-    var vl = document.getElementById('visitList');
-    if (!visits.length) {
-      vl.innerHTML = '<div class="no-visits">診察履歴はまだありません</div>';
-    } else {
-      vl.innerHTML = visits.map(function (v) { return UI._visitCardHtml(v); }).join('');
+    try {
+      var visits = await DB.visits.byPatient(patientId);
+      visits.sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+      var vl = document.getElementById('visitList');
+      if (!visits.length) {
+        vl.innerHTML = '<div class="no-visits">診察履歴はまだありません</div>';
+      } else {
+        vl.innerHTML = visits.map(function (v) { return UI._visitCardHtml(v); }).join('');
+      }
+    } catch (e) {
+      console.warn('[VSS] 診察履歴の読み込みエラー:', e);
+      document.getElementById('visitList').innerHTML = '<div class="no-visits">診察履歴はまだありません</div>';
     }
 
-    UI.showView('viewPatient');
     UI.renderPatientList();
   },
 
@@ -1306,7 +1311,6 @@ function bindEvents() {
   // Patient list click (delegated)
   document.getElementById('patientList').addEventListener('click', function (e) {
     var item = e.target.closest('.patient-item');
-    console.log('[VSS] patientList click, item:', item, 'id:', item ? item.dataset.id : 'none');
     if (item) UI.renderPatientView(item.dataset.id);
   });
 
