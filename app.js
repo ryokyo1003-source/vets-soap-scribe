@@ -270,23 +270,26 @@ var Recording = {
     return new Promise(function (resolve) {
       clearInterval(State.timerInterval);
       State.timerInterval = null;
-      if (State.mediaRecorder && State.mediaRecorder.state !== 'inactive') {
-        State.mediaRecorder.onstop = function () {
-          setTimeout(function () {
-            var combined = new Blob(State.audioSegments, { type: 'audio/webm' });
-            if (State.mediaStream) {
-              State.mediaStream.getTracks().forEach(function (t) { t.stop(); });
-            }
-            resolve(combined);
-          }, 200);
-        };
+
+      function finalize() {
+        setTimeout(function () {
+          console.log('[VSS] stop finalize: segments=' + State.audioSegments.length +
+            ', sizes=' + State.audioSegments.map(function(b){return b.size;}).join(','));
+          var combined = new Blob(State.audioSegments, { type: 'audio/webm' });
+          console.log('[VSS] combined blob size=' + combined.size);
+          if (State.mediaStream) {
+            State.mediaStream.getTracks().forEach(function (t) { t.stop(); });
+          }
+          resolve(combined);
+        }, 300);
+      }
+
+      if (State.mediaRecorder && State.mediaRecorder.state === 'recording') {
+        State.mediaRecorder.onstop = finalize;
         State.mediaRecorder.stop();
       } else {
-        var combined = new Blob(State.audioSegments, { type: 'audio/webm' });
-        if (State.mediaStream) {
-          State.mediaStream.getTracks().forEach(function (t) { t.stop(); });
-        }
-        resolve(combined);
+        // 一時停止中 or inactive → セグメントは既に保存済み
+        finalize();
       }
     });
   },
@@ -1424,7 +1427,11 @@ function bindEvents() {
     UI.setRecordingState('idle');
     var blob = await Recording.stop();
     State.clearRecSession();
-    if (blob.size < 1000) { UI.toast('録音が短すぎます。もう一度お試しください。', 'error'); return; }
+    console.log('[VSS] 録音停止: blob.size=' + blob.size + ', segments=' + State.audioSegments.length);
+    if (blob.size < 100) {
+      UI.toast('録音データがありません。もう一度お試しください。', 'error');
+      return;
+    }
     await runProcessWithAI(blob);
   });
 
