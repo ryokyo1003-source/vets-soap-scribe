@@ -115,7 +115,49 @@ var State = {
   mediaRecorder: null,
   timerInterval: null,
   timerSeconds: 0,
-  pendingVisitData: null  // { soap, fullText } waiting to be saved
+  pendingVisitData: null,  // { soap, fullText } waiting to be saved
+  recState: 'idle',        // 'idle' | 'recording' | 'paused'
+  // 患者ごとの録音状態を保持
+  _recSessions: {},  // { patientId: { audioSegments, mediaStream, timerSeconds, recState } }
+
+  saveRecSession: function () {
+    if (!this.currentPatientId) return;
+    if (this.recState === 'idle' && !this.audioSegments.length) return;
+    this._recSessions[this.currentPatientId] = {
+      audioSegments: this.audioSegments,
+      mediaStream: this.mediaStream,
+      timerSeconds: this.timerSeconds,
+      recState: this.recState,
+      pendingVisitData: this.pendingVisitData
+    };
+  },
+
+  restoreRecSession: function (patientId) {
+    var s = this._recSessions[patientId];
+    if (s) {
+      this.audioSegments = s.audioSegments;
+      this.mediaStream = s.mediaStream;
+      this.timerSeconds = s.timerSeconds;
+      this.recState = s.recState;
+      this.pendingVisitData = s.pendingVisitData;
+      return true;
+    }
+    return false;
+  },
+
+  clearRecSession: function (patientId) {
+    delete this._recSessions[patientId || this.currentPatientId];
+  },
+
+  resetRec: function () {
+    this.audioSegments = [];
+    this.mediaStream = null;
+    this.mediaRecorder = null;
+    this.timerInterval = null;
+    this.timerSeconds = 0;
+    this.recState = 'idle';
+    this.pendingVisitData = null;
+  }
 };
 
 
@@ -503,10 +545,21 @@ var UI = {
   renderPatientView: async function (patientId) {
     var p = await DB.patients.get(patientId);
     if (!p) return;
+
+    // 現在の患者の録音状態を保存（別の患者に切り替える前に）
+    if (State.currentPatientId && State.currentPatientId !== patientId) {
+      // 録音中なら一時停止してから保存
+      if (State.recState === 'recording') {
+        Recording.pause();
+        State.recState = 'paused';
+      }
+      State.saveRecSession();
+    }
+
     State.currentPatientId = patientId;
     State.currentPatient   = p;
 
-    // まずビューを切り替え（エラーがあっても画面は遷移する）
+    // まずビューを切り替え
     UI.showView('viewPatient');
 
     // Header
@@ -519,13 +572,33 @@ var UI = {
     document.getElementById('ptHeaderDetails').innerHTML =
       details.map(function (d) { return '<span>' + d + '</span>'; }).join('');
 
-    // Reset recording panel
-    UI.setRecordingState('idle');
+    // 録音状態を復元 or リセット
+    if (State.restoreRecSession(patientId)) {
+      // 保存済みセッションがある → 復元した状態でUI表示
+      UI.setRecordingState(State.recState);
+      if (State.recState === 'paused') {
+        // タイマー表示を復元
+        var m = Math.floor(State.timerSeconds / 60);
+        var s = State.timerSeconds % 60;
+        document.getElementById('recTimer').textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+      }
+      // 保留中のSOAP結果があれば表示
+      if (State.pendingVisitData) {
+        document.getElementById('resSoap').value = State.pendingVisitData.soap;
+        document.getElementById('resFull').value = State.pendingVisitData.fullText;
+        document.getElementById('soapResult').style.display = 'block';
+      } else {
+        document.getElementById('soapResult').style.display = 'none';
+      }
+    } else {
+      // 新規 → リセット
+      State.resetRec();
+      UI.setRecordingState('idle');
+      document.getElementById('soapResult').style.display = 'none';
+      document.getElementById('saveVisitBtn').textContent = '💾 カルテに保存';
+      document.getElementById('saveVisitBtn').disabled = false;
+    }
     UI.setProcessing(null);
-    document.getElementById('soapResult').style.display = 'none';
-    document.getElementById('saveVisitBtn').textContent = '💾 カルテに保存';
-    document.getElementById('saveVisitBtn').disabled = false;
-    State.pendingVisitData = null;
 
     // Visit history
     try {
@@ -1317,9 +1390,17 @@ function bindEvents() {
   // Recording
   document.getElementById('recStartBtn').addEventListener('click', async function () {
     if (!Settings.get('api_key')) { UI.toast('設定からAPIキーを入力してください', 'error'); return; }
+    // 一時停止中の再開
+    if (State.recState === 'paused' && State.mediaStream) {
+      Recording.resume();
+      State.recState = 'recording';
+      UI.setRecordingState('recording');
+      return;
+    }
     try {
       var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       Recording.start(stream);
+      State.recState = 'recording';
       UI.setRecordingState('recording');
     } catch (e) {
       UI.toast('マイクのアクセスが拒否されました: ' + e.message, 'error');
@@ -1328,18 +1409,21 @@ function bindEvents() {
 
   document.getElementById('recPauseBtn').addEventListener('click', function () {
     Recording.pause();
+    State.recState = 'paused';
     UI.setRecordingState('paused');
   });
 
   document.getElementById('recResumeBtn').addEventListener('click', function () {
-    // 一時停止中はストリームが生きているのでそのまま再開
     Recording.resume();
+    State.recState = 'recording';
     UI.setRecordingState('recording');
   });
 
   document.getElementById('recStopBtn').addEventListener('click', async function () {
+    State.recState = 'idle';
     UI.setRecordingState('idle');
     var blob = await Recording.stop();
+    State.clearRecSession();
     if (blob.size < 1000) { UI.toast('録音が短すぎます。もう一度お試しください。', 'error'); return; }
     await runProcessWithAI(blob);
   });
