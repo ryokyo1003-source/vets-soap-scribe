@@ -273,10 +273,7 @@ var Recording = {
 
       function finalize() {
         setTimeout(function () {
-          console.log('[VSS] stop finalize: segments=' + State.audioSegments.length +
-            ', sizes=' + State.audioSegments.map(function(b){return b.size;}).join(','));
           var combined = new Blob(State.audioSegments, { type: 'audio/webm' });
-          console.log('[VSS] combined blob size=' + combined.size);
           if (State.mediaStream) {
             State.mediaStream.getTracks().forEach(function (t) { t.stop(); });
           }
@@ -285,7 +282,12 @@ var Recording = {
       }
 
       if (State.mediaRecorder && State.mediaRecorder.state === 'recording') {
-        State.mediaRecorder.onstop = finalize;
+        // 元の onstop（チャンクをaudioSegmentsに保存）を先に実行してから finalize
+        var origOnStop = State.mediaRecorder.onstop;
+        State.mediaRecorder.onstop = function () {
+          if (origOnStop) origOnStop();
+          finalize();
+        };
         State.mediaRecorder.stop();
       } else {
         // 一時停止中 or inactive → セグメントは既に保存済み
