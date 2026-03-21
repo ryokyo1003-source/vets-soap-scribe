@@ -1169,55 +1169,48 @@ function bindEvents() {
   });
 
   // 診療項目CSV ドラッグ＆ドロップ
-  var refDropZone    = document.getElementById('refDataDropZone');
-  var refFileInput   = document.getElementById('refDataFileInput');
-  var refDataTextarea = document.getElementById('sRefData');
+  (function () {
+    var refDropZone    = document.getElementById('refDataDropZone');
+    var refFileInput   = document.getElementById('refDataFileInput');
+    var refDataTextarea = document.getElementById('sRefData');
+    if (!refDropZone || !refFileInput || !refDataTextarea) return;
 
-  function loadRefDataCSV(file) {
-    CSVSync._readFileText(file).then(function (text) {
-      var cleaned = text.replace(/^\uFEFF/, '');
-      var lines = cleaned.split(/\r?\n/).filter(function (l) { return l.trim(); });
-      if (!lines.length) { UI.toast('CSVが空です', 'error'); return; }
-      // ヘッダー行（数字で始まらない行）をスキップ
-      var hasHeader = lines[0] && !/^\d/.test(lines[0].trim());
-      var header = hasHeader ? lines[0] : '';
-      var dataLines = hasHeader ? lines.slice(1) : lines;
-      var formatted = dataLines.map(function (l) { return l.trim(); }).filter(Boolean).join('\n');
-      // 既存データがあれば改行して追加、なければそのまま
-      if (refDataTextarea.value.trim()) {
-        refDataTextarea.value = refDataTextarea.value.trim() + '\n' + formatted;
-      } else {
-        refDataTextarea.value = formatted;
-      }
-      Settings.save();
-      UI.toast(file.name + ' — ' + dataLines.length + '件の診療項目を読み込みました', 'success');
-      refDropZone.classList.add('loaded');
-      refDropZone.innerHTML = '<span class="drop-icon">✅</span>' + file.name + '（' + dataLines.length + '件）';
-    }).catch(function (e) {
-      UI.toast('CSV読み込みエラー: ' + e.message, 'error');
-    });
-  }
-
-  refDropZone.addEventListener('dragover', function (e) {
-    e.preventDefault(); refDropZone.classList.add('dragover');
-  });
-  refDropZone.addEventListener('dragleave', function (e) {
-    e.preventDefault(); refDropZone.classList.remove('dragover');
-  });
-  refDropZone.addEventListener('drop', function (e) {
-    e.preventDefault(); refDropZone.classList.remove('dragover');
-    var files = e.dataTransfer.files;
-    if (files.length && /\.csv$/i.test(files[0].name)) {
-      loadRefDataCSV(files[0]);
-    } else {
-      UI.toast('CSVファイルをドロップしてください', 'error');
+    function loadRefDataCSV(file) {
+      CSVSync._readFileText(file).then(function (text) {
+        var cleaned = text.replace(/^\uFEFF/, '');
+        var lines = cleaned.split(/\r?\n/).filter(function (l) { return l.trim(); });
+        if (!lines.length) { UI.toast('CSVが空です', 'error'); return; }
+        var hasHeader = lines[0] && !/^\d/.test(lines[0].trim());
+        var dataLines = hasHeader ? lines.slice(1) : lines;
+        var formatted = dataLines.map(function (l) { return l.trim(); }).filter(Boolean).join('\n');
+        if (refDataTextarea.value.trim()) {
+          refDataTextarea.value = refDataTextarea.value.trim() + '\n' + formatted;
+        } else {
+          refDataTextarea.value = formatted;
+        }
+        Settings.save();
+        UI.toast(file.name + ' — ' + dataLines.length + '件の診療項目を読み込みました', 'success');
+        refDropZone.classList.add('loaded');
+        refDropZone.innerHTML = '<span class="drop-icon">✅</span>' + file.name + '（' + dataLines.length + '件）';
+      }).catch(function (e) {
+        UI.toast('CSV読み込みエラー: ' + e.message, 'error');
+      });
     }
-  });
-  refDropZone.addEventListener('click', function () { refFileInput.click(); });
-  refFileInput.addEventListener('change', function (e) {
-    if (e.target.files[0]) loadRefDataCSV(e.target.files[0]);
-    refFileInput.value = '';
-  });
+
+    refDropZone.addEventListener('dragover', function (e) { e.preventDefault(); refDropZone.classList.add('dragover'); });
+    refDropZone.addEventListener('dragleave', function (e) { e.preventDefault(); refDropZone.classList.remove('dragover'); });
+    refDropZone.addEventListener('drop', function (e) {
+      e.preventDefault(); refDropZone.classList.remove('dragover');
+      var files = e.dataTransfer.files;
+      if (files.length && /\.csv$/i.test(files[0].name)) { loadRefDataCSV(files[0]); }
+      else { UI.toast('CSVファイルをドロップしてください', 'error'); }
+    });
+    refDropZone.addEventListener('click', function () { refFileInput.click(); });
+    refFileInput.addEventListener('change', function (e) {
+      if (e.target.files[0]) loadRefDataCSV(e.target.files[0]);
+      refFileInput.value = '';
+    });
+  })();
 
   // New patient
   document.getElementById('newPatientBtn').addEventListener('click', async function () {
@@ -1458,36 +1451,27 @@ function bindEvents() {
     UI.toast('コピーしました', 'success');
   });
 
-  // CSV drag & drop
-  var csvDropZone = document.getElementById('csvDropZone');
-  var csvFileInputHidden = document.getElementById('csvFileInputHidden');
+  // CSV drag & drop (患者CSV)
+  (function () {
+    var csvDropZone = document.getElementById('csvDropZone');
+    var csvFileInputHidden = document.getElementById('csvFileInputHidden');
+    if (!csvDropZone || !csvFileInputHidden) return;
 
-  csvDropZone.addEventListener('dragover', function (e) {
-    e.preventDefault();
-    csvDropZone.classList.add('dragover');
-  });
-  csvDropZone.addEventListener('dragleave', function (e) {
-    e.preventDefault();
-    csvDropZone.classList.remove('dragover');
-  });
-  csvDropZone.addEventListener('drop', function (e) {
-    e.preventDefault();
-    csvDropZone.classList.remove('dragover');
-    var files = e.dataTransfer.files;
-    if (files.length && /\.csv$/i.test(files[0].name)) {
-      CSVSync.handleDroppedFile(files[0]);
-    } else {
-      UI.toast('CSVファイルをドロップしてください', 'error');
-    }
-  });
-  csvDropZone.addEventListener('click', function () {
-    csvFileInputHidden.click();
-  });
-  csvFileInputHidden.addEventListener('change', function (e) {
-    var file = e.target.files[0];
-    if (file) CSVSync.handleDroppedFile(file);
-    csvFileInputHidden.value = '';
-  });
+    csvDropZone.addEventListener('dragover', function (e) { e.preventDefault(); csvDropZone.classList.add('dragover'); });
+    csvDropZone.addEventListener('dragleave', function (e) { e.preventDefault(); csvDropZone.classList.remove('dragover'); });
+    csvDropZone.addEventListener('drop', function (e) {
+      e.preventDefault(); csvDropZone.classList.remove('dragover');
+      var files = e.dataTransfer.files;
+      if (files.length && /\.csv$/i.test(files[0].name)) { CSVSync.handleDroppedFile(files[0]); }
+      else { UI.toast('CSVファイルをドロップしてください', 'error'); }
+    });
+    csvDropZone.addEventListener('click', function () { csvFileInputHidden.click(); });
+    csvFileInputHidden.addEventListener('change', function (e) {
+      var file = e.target.files[0];
+      if (file) CSVSync.handleDroppedFile(file);
+      csvFileInputHidden.value = '';
+    });
+  })();
 
   // CSV import / sync
   document.getElementById('csvPickBtn').addEventListener('click', function () {
@@ -1540,10 +1524,10 @@ document.addEventListener('DOMContentLoaded', async function () {
   try {
     await DB.open();
     Settings.load();
-    bindEvents();
+    try { bindEvents(); } catch (e) { console.error('[VSS] bindEventsエラー:', e); }
     await UI.renderPatientList();
     UI.showView('viewWelcome');
-    await CSVSync.loadConfig();
+    try { await CSVSync.loadConfig(); } catch (e) { console.error('[VSS] CSVSync初期化エラー:', e); }
     console.log('[VSS] 起動完了');
   } catch (e) {
     console.error('[VSS] 起動エラー:', e);
