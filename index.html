@@ -394,6 +394,8 @@
     .csv-drop-zone.loaded { border-color: var(--green); border-style: solid; color: var(--green); background: #f0faf4; }
     .csv-drop-zone .drop-icon { font-size: 18px; display: block; margin-bottom: 2px; }
     .csv-patient-count { font-size: 10px; color: var(--green); font-weight: bold; margin-top: 2px; }
+    .csv-drop-sm { padding: 8px 6px; margin: 0 0 8px 0; font-size: 11px; }
+    .csv-drop-sm .drop-icon { font-size: 14px; display: inline; margin-right: 4px; }
 
     /* CSV mapping modal */
     #csvMappingModal { max-width: 580px; }
@@ -642,8 +644,14 @@
       <input type="text" id="sGasUrl" placeholder="https://script.google.com/...">
     </div>
     <div class="form-group">
-      <label>院内マスタデータ（患者リスト・会計項目）</label>
-      <textarea id="sRefData" style="height:100px" placeholder="[患者]&#13;&#10;1001, 田中, ポチ"></textarea>
+      <label>院内マスタデータ（診療項目・会計項目）</label>
+      <div class="csv-drop-zone csv-drop-sm" id="refDataDropZone">
+        <span class="drop-icon">📋</span>
+        診療項目CSVをドロップ or クリック
+      </div>
+      <input type="file" id="refDataFileInput" accept=".csv" style="display:none">
+      <textarea id="sRefData" style="height:100px" placeholder="診療項目名, 金額&#13;&#10;初診料, 1500&#13;&#10;再診料, 800"></textarea>
+      <div class="form-hint">CSVをドロップすると下のテキストエリアに追加されます。手動入力・編集も可能です。</div>
     </div>
     <div class="form-group">
       <label>カスタム用語辞書（1行1語）</label>
