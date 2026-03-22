@@ -1108,15 +1108,22 @@ var CSVSync = {
       var chartNo   = m.chartNo    >= 0 ? (row[m.chartNo]    || '').trim() : '';
       var ownerName = m.ownerName  >= 0 ? (row[m.ownerName]  || '').trim() : '';
       var animalName = m.animalName >= 0 ? (row[m.animalName] || '').trim() : '';
-      // 飼い主名・動物名の両方が空、または「新患」「初診」のテスト行はスキップ
+      // 飼い主名・動物名の両方が空、または「新患」「初診」「テスト」「サポート」行はスキップ
       if (!ownerName && !animalName) continue;
-      if (/^(初診|新患|テスト)\d*/.test(ownerName)) continue;
+      if (/^(初診|新患|テスト|aniwa)/i.test(ownerName)) continue;
+
+      // カルテ番号を XXXXX-XX 形式に正規化（0埋め）
+      if (chartNo) {
+        var parts = chartNo.match(/^(\d+)-(\d+)$/);
+        if (parts) {
+          chartNo = parts[1].padStart(5, '0') + '-' + parts[2].padStart(2, '0');
+        }
+      }
 
       // ハロペ: karte_numberが空の場合、owner_number から生成を試みる
       if (!chartNo && m.ownerNumber >= 0) {
         var ownerNum = (row[m.ownerNumber] || '').trim();
         if (ownerNum) {
-          // 同じowner_numberのペット数をカウントして連番を付与
           var sameOwnerCount = 0;
           for (var j = 0; j < i; j++) {
             var prevOwnerNum = (this._rows[j][m.ownerNumber] || '').trim();
