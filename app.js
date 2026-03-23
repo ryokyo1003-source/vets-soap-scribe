@@ -338,37 +338,7 @@ var AI = {
     return data.text;
   },
 
-  // Step 2: Text correction
-  correct: async function (rawText, apiKey) {
-    var sys = 'あなたは獣医療専門のテキスト校正アシスタントです。\n'
-      + '以下の音声認識テキストを校正してください。\n\n'
-      + '# ルール\n'
-      + '- 意味を絶対に変えないこと\n'
-      + '- 「えー」「あのー」「えっと」「うーん」等のフィラーを除去\n'
-      + '- 獣医療の専門用語を正しい表記に修正（あぽきる→アポキル 等）\n'
-      + '- 数値（体重・体温・心拍数等）は正確に保持\n'
-      + '- 句読点を適切に補正し読みやすくする\n'
-      + '- 話し言葉の構造はそのまま維持\n'
-      + '- 校正後のテキストのみを出力すること\n\n'
-      + '# 音声認識で混同されやすい獣医療用語（前後の文脈で正しい方に修正）\n'
-      + '- 「肺炎」↔「歯肉炎」：歯・口腔・スケーリングの話題 → 歯肉炎\n'
-      + '- 「鼻炎」↔「膵炎」：嘔吐・腹痛・消化器・リパーゼの話題 → 膵炎\n'
-      + '- 「胃石」↔「歯石」：歯・スケーリングの話題 → 歯石\n'
-      + '- 「肺水腫」↔「廃用症候群」：心臓・呼吸困難の話題 → 肺水腫\n'
-      + '- 「股関節」↔「肩関節」：前肢 → 肩関節、後肢 → 股関節';
-    try {
-      var res = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
-        body: JSON.stringify({ model: 'gpt-4.1-mini', messages: [{ role: 'system', content: sys }, { role: 'user', content: rawText }] })
-      });
-      var data = await res.json();
-      if (data.choices && data.choices[0]) return data.choices[0].message.content.trim();
-    } catch (e) { /* fall through to rawText */ }
-    return rawText;
-  },
-
-  // Step 3: SOAP generation
+  // Step 2: SOAP generation（テキスト補正も統合）
   generateSOAP: async function (fullText, patient, refData, mode, apiKey) {
     var specialtyExtra = SOAP.detectSpecialty(fullText);
     var patientContext = patient
@@ -377,11 +347,22 @@ var AI = {
         + (patient.chartNo ? ' カルテ番号：' + patient.chartNo : '') + '\n'
       : '';
 
+    // テキスト補正指示（SOAP生成に統合）
+    var correctionRules = '# 音声認識テキストの補正ルール（カルテ作成前に自動適用すること）\n'
+      + '- 「えー」「あのー」「えっと」「うーん」等のフィラーは除去して読み取ること\n'
+      + '- 獣医療の専門用語を正しい表記で記載（あぽきる→アポキル 等）\n'
+      + '- 数値（体重・体温・心拍数等）は正確に保持\n'
+      + '- 音声認識で混同されやすい用語は文脈で判断：\n'
+      + '  「肺炎」↔「歯肉炎」：歯の話題→歯肉炎 / 「鼻炎」↔「膵炎」：消化器の話題→膵炎\n'
+      + '  「胃石」↔「歯石」：スケーリングの話題→歯石 / 「肺水腫」↔「廃用症候群」：心臓の話題→肺水腫\n\n';
+
     var basePrompt;
     if (mode === 'soap') {
-      basePrompt = 'あなたは獣医師アシスタントです。会話テキストから厳格なフォーマットでカルテを作成してください。\n'
-        + '出力はJSON形式 { "soap_text": "...", "full_log": "..." } で行ってください。\n\n'
-        + '# 重要ルール\n'
+      basePrompt = 'あなたは獣医師アシスタントです。音声認識された会話テキストから厳格なフォーマットでカルテを作成してください。\n'
+        + '出力はJSON形式 { "soap_text": "...", "full_log": "..." } で行ってください。\n'
+        + '- full_log: フィラーを除去し用語を正した会話の全文ログ\n\n'
+        + correctionRules
+        + '# カルテ作成ルール\n'
         + '- テンプレート説明文は絶対に出力しないこと。実際の内容のみを記載すること。\n'
         + '- 各セクションでは会話から得られた具体的な情報のみ記載すること。\n'
         + '- 情報がない項目は「・」も含めて一切出力しないこと（内容がある場合のみ「・〇〇」形式で記載）。\n'
@@ -395,9 +376,11 @@ var AI = {
         + '[A]\n\n[P]\n\n[処置・処方・費用]\n\n[MEMO]\n受付：　　診察：　　検査：　　調剤：　　会計：　TEL: /　予約確定日: /'
         + specialtyExtra;
     } else {
-      basePrompt = 'あなたは獣医師アシスタントです。受付での問診・ヒアリング内容を[S]に詳細にまとめてください。\n'
-        + '出力はJSON形式 { "soap_text": "...", "full_log": "..." } で行ってください。\n\n'
-        + '# 重要ルール\n'
+      basePrompt = 'あなたは獣医師アシスタントです。音声認識された受付での問診・ヒアリング内容を[S]に詳細にまとめてください。\n'
+        + '出力はJSON形式 { "soap_text": "...", "full_log": "..." } で行ってください。\n'
+        + '- full_log: フィラーを除去し用語を正した会話の全文ログ\n\n'
+        + correctionRules
+        + '# カルテ作成ルール\n'
         + '- [S]1行目は「・主訴：〇〇」の形式で来院理由を書くこと。\n'
         + '- [O][A][P][処置・処方・費用]: 見出しのみ出力し中身は完全に空欄。\n'
         + '- 情報がない項目は「・」も含めて一切出力しないこと。\n\n'
@@ -758,11 +741,8 @@ async function runProcessWithAI(audioBlob) {
     UI.setProcessing('Whisperで音声を文字起こし中...');
     var rawText = await AI.transcribe(audioBlob, apiKey, Settings.get('custom_dict'));
 
-    UI.setProcessing('テキストを補正中...');
-    var corrected = await AI.correct(rawText, apiKey);
-
     UI.setProcessing('SOAPカルテを生成中...');
-    var result = await AI.generateSOAP(corrected, patient, refData, mode, apiKey);
+    var result = await AI.generateSOAP(rawText, patient, refData, mode, apiKey);
 
     UI.setProcessing(null);
 
