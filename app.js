@@ -538,12 +538,11 @@ var UI = {
   renderPatientList: async function () {
     var all  = await DB.patients.getAll();
     var q    = (document.getElementById('searchInput').value || '').trim().toLowerCase();
-    var list = q ? all.filter(function (p) {
-      return (p.chartNo    || '').toLowerCase().includes(q) ||
-             (p.ownerName  || '').toLowerCase().includes(q) ||
-             (p.animalName || '').toLowerCase().includes(q) ||
-             (p.breed      || '').toLowerCase().includes(q) ||
-             (p.species    || '').toLowerCase().includes(q);
+    var keywords = q ? q.split(/[\s　]+/).filter(Boolean) : [];
+    var list = keywords.length ? all.filter(function (p) {
+      var text = [(p.chartNo || ''), (p.ownerName || ''), (p.animalName || ''),
+                  (p.breed || ''), (p.species || '')].join(' ').toLowerCase();
+      return keywords.every(function (kw) { return text.includes(kw); });
     }) : all;
     list.sort(function (a, b) { return (b.updatedAt || '').localeCompare(a.updatedAt || ''); });
 
