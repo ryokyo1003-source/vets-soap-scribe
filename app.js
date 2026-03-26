@@ -1417,18 +1417,9 @@ function bindEvents() {
     if (item) UI.renderPatientView(item.dataset.id);
   });
 
-  // Search（IME composition対応）
+  // Search
   var searchTimeout;
-  var isComposing = false;
-  var searchEl = document.getElementById('searchInput');
-  searchEl.addEventListener('compositionstart', function () { isComposing = true; });
-  searchEl.addEventListener('compositionend', function () {
-    isComposing = false;
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(UI.renderPatientList, 250);
-  });
-  searchEl.addEventListener('input', function () {
-    if (isComposing) return;
+  document.getElementById('searchInput').addEventListener('input', function () {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(UI.renderPatientList, 250);
   });
