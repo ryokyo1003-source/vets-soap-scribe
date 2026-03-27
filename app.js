@@ -1474,9 +1474,9 @@ function bindEvents() {
     var btn = e.target.closest('.section-copy-btn');
     if (!btn) return;
     var sections = SOAP.parseSections(document.getElementById('resSoap').value);
-    var content  = sections[btn.dataset.section] || '';
-    if (!content.trim()) return;
-    navigator.clipboard.writeText(content.trim()).then(function () {
+    var content  = (sections[btn.dataset.section] || '').replace(/^[・▪■]\s*/gm, '').trim();
+    if (!content) return;
+    navigator.clipboard.writeText(content).then(function () {
       btn.classList.add('copied');
       var orig = btn.textContent;
       btn.textContent = '✅';
@@ -1522,9 +1522,9 @@ function bindEvents() {
       var body  = copyBtn.closest('.visit-card-body');
       var soap  = body.querySelector('.visit-soap-text').value;
       var sections = SOAP.parseSections(soap);
-      var content  = sections[copyBtn.dataset.section] || '';
-      if (!content.trim()) return;
-      navigator.clipboard.writeText(content.trim()).then(function () {
+      var content  = (sections[copyBtn.dataset.section] || '').replace(/^[・▪■]\s*/gm, '').trim();
+      if (!content) return;
+      navigator.clipboard.writeText(content).then(function () {
         copyBtn.classList.add('copied');
         var orig = copyBtn.textContent;
         copyBtn.textContent = '✅';

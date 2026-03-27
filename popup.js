@@ -245,10 +245,10 @@ document.addEventListener('DOMContentLoaded', async function() {
       const soapText = document.getElementById("resSoap").value;
       const sectionKey = btn.dataset.section;
       const sections = parseSoapSections(soapText);
-      const content = sections[sectionKey] || "";
-      if (!content.trim()) { return; }
+      const content = (sections[sectionKey] || "").replace(/^[・▪■]\s*/gm, '').trim();
+      if (!content) { return; }
       try {
-        await navigator.clipboard.writeText(content.trim());
+        await navigator.clipboard.writeText(content);
         btn.classList.add("copied");
         const orig = btn.textContent;
         btn.textContent = "✅";
