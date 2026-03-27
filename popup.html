@@ -251,6 +251,22 @@
       <div class="api-key-saved" id="apiKeySaved">✓ APIキー保存済み</div>
     </div>
     <div class="setting-group">
+      <label>LLMプロバイダー（テキスト処理用）</label>
+      <select id="llmProvider" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px;">
+        <option value="openai">OpenAI (GPT-4.1-mini)</option>
+        <option value="claude">Anthropic (Claude Sonnet 4.6)</option>
+      </select>
+      <div class="note">音声認識（Whisper）は常にOpenAI APIを使用します</div>
+    </div>
+    <div class="setting-group" id="anthropicKeyGroup" style="display:none;">
+      <label>Anthropic API Key</label>
+      <div class="api-key-wrapper">
+        <input type="password" id="anthropicApiKey" placeholder="sk-ant-..." />
+        <button class="toggle-key-btn" id="toggleAnthropicKeyBtn">表示</button>
+      </div>
+      <div class="api-key-saved" id="anthropicKeySaved">✓ Anthropic APIキー保存済み</div>
+    </div>
+    <div class="setting-group">
       <label>Google Sheets Script URL</label>
       <input type="text" id="gasUrl" placeholder="https://script.google.com/..." />
     </div>

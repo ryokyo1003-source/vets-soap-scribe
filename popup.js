@@ -26,6 +26,11 @@ document.addEventListener('DOMContentLoaded', async function() {
   const csvStatus = document.getElementById("csvStatus");
   const recordingIndicator = document.getElementById("recordingIndicator");
   const missingWarning = document.getElementById("missingWarning");
+  const llmProviderSelect = document.getElementById("llmProvider");
+  const anthropicApiKeyInput = document.getElementById("anthropicApiKey");
+  const toggleAnthropicKeyBtn = document.getElementById("toggleAnthropicKeyBtn");
+  const anthropicKeySaved = document.getElementById("anthropicKeySaved");
+  const anthropicKeyGroup = document.getElementById("anthropicKeyGroup");
   const familySummaryBtn = document.getElementById("familySummaryBtn");
   const familySummaryOverlay = document.getElementById("familySummaryOverlay");
   const familySummaryLoading = document.getElementById("familySummaryLoading");
@@ -144,6 +149,21 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
   }
 
+  // ■ LLMプロバイダー切り替え
+  if (llmProviderSelect) {
+    llmProviderSelect.addEventListener('change', () => {
+      anthropicKeyGroup.style.display = llmProviderSelect.value === 'claude' ? 'block' : 'none';
+      saveToStorage('llm_provider', llmProviderSelect);
+    });
+  }
+  if (toggleAnthropicKeyBtn) {
+    toggleAnthropicKeyBtn.addEventListener('click', () => {
+      const isPassword = anthropicApiKeyInput.type === 'password';
+      anthropicApiKeyInput.type = isPassword ? 'text' : 'password';
+      toggleAnthropicKeyBtn.textContent = isPassword ? '隠す' : '表示';
+    });
+  }
+
   // ■ CSVアップロード
   if (csvUploadBtn && csvFileInput) {
     csvUploadBtn.addEventListener('click', () => csvFileInput.click());
@@ -188,11 +208,14 @@ document.addEventListener('DOMContentLoaded', async function() {
   refDataInput.addEventListener('blur', () => saveToStorage('ref_data', refDataInput));
   customDictInput.addEventListener('change', () => saveToStorage('custom_dict', customDictInput));
   customDictInput.addEventListener('blur', () => saveToStorage('custom_dict', customDictInput));
+  anthropicApiKeyInput.addEventListener('change', () => { saveToStorage('anthropic_api_key', anthropicApiKeyInput); if (anthropicApiKeyInput.value) anthropicKeySaved.style.display = 'block'; });
+  anthropicApiKeyInput.addEventListener('blur', () => { saveToStorage('anthropic_api_key', anthropicApiKeyInput); if (anthropicApiKeyInput.value) anthropicKeySaved.style.display = 'block'; });
 
   // 録音開始
   recBtn.addEventListener('click', async () => {
     const apiKey = apiKeyInput.value;
-    if (!apiKey) { alert("APIキーを設定してください"); settingsArea.style.display='block'; return; }
+    if (!apiKey) { alert("OpenAI APIキー（音声認識用）を設定してください"); settingsArea.style.display='block'; return; }
+    if (llmProviderSelect.value === 'claude' && !anthropicApiKeyInput.value) { alert("Anthropic APIキーを設定してください"); settingsArea.style.display='block'; return; }
     resultArea.style.display = "none"; cloudMsg.style.display = "none"; missingWarning.style.display = "none";
 
     try {
@@ -445,29 +468,17 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   async function generateTempTitle(text, refData) {
     if (!text || text.length < 5) return;
-    const apiKey = apiKeyInput.value;
     const cardDiv = document.querySelector(`.slot-card[data-id="${currentSlotId}"] div`);
     cardDiv.innerText = "解析...";
     try {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model: "gpt-4.1-mini",
-          messages: [
-            { role: "system", content: `会話から『飼い主名 - 動物名』を10文字以内で抽出せよ。\n必ず以下の【マスタDB】を検索し、一致する患者がいればその「漢字表記」と「ID」を使用せよ。\n# マスタDB\n${refData}` },
-            { role: "user", content: text }
-          ]
-        })
-      });
-      const data = await res.json();
-      if (data.choices && data.choices[0]) {
-        const newTitle = data.choices[0].message.content.trim();
-        slots[currentSlotId].title = newTitle;
-        cardDiv.innerText = newTitle;
-        if (currentSlotId === document.querySelector('.slot-card.active').dataset.id) {
-          currentTitleEdit.value = newTitle;
-        }
+      const newTitle = (await callLLM(
+        `会話から『飼い主名 - 動物名』を10文字以内で抽出せよ。\n必ず以下の【マスタDB】を検索し、一致する患者がいればその「漢字表記」と「ID」を使用せよ。\n# マスタDB\n${refData}`,
+        text
+      )).trim();
+      slots[currentSlotId].title = newTitle;
+      cardDiv.innerText = newTitle;
+      if (currentSlotId === document.querySelector('.slot-card.active').dataset.id) {
+        currentTitleEdit.value = newTitle;
       }
     } catch (e) { cardDiv.innerText = slots[currentSlotId].title; }
   }
@@ -598,6 +609,54 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     if (extra) console.log("[VSS] 自動検出された診療科指示あり");
     return extra;
+  }
+
+  // ■ LLM統一呼び出し（OpenAI / Claude 切り替え）
+  async function callLLM(systemPrompt, userContent) {
+    const provider = llmProviderSelect ? llmProviderSelect.value : 'openai';
+
+    if (provider === 'claude') {
+      const anthropicKey = anthropicApiKeyInput.value;
+      if (!anthropicKey) throw new Error("Anthropic APIキーが設定されていません");
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6-20250514",
+          max_tokens: 8192,
+          system: systemPrompt,
+          messages: [{ role: "user", content: userContent }]
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error("Claude エラー: " + (data.error.message || JSON.stringify(data.error)));
+      if (!data.content || !data.content[0]) throw new Error("Claude からの応答が不正です");
+      // マークダウンコードフェンスを除去
+      return data.content[0].text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
+    } else {
+      const apiKey = apiKeyInput.value;
+      if (!apiKey) throw new Error("OpenAI APIキーが設定されていません");
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userContent }
+          ]
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error("GPT エラー: " + (data.error.message || JSON.stringify(data.error)));
+      if (!data.choices || !data.choices[0]) throw new Error("GPTからの応答が不正です");
+      return data.choices[0].message.content.trim();
+    }
   }
 
   // ■ AI処理
@@ -733,24 +792,12 @@ document.addEventListener('DOMContentLoaded', async function() {
 - 「毛球症」「毛急症」→「毛球症」
 - 「胃腸うっ滞」「胃腸鬱体」→「胃腸うっ滞」`;
 
-      const correctionRes = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model: "gpt-4.1-mini",
-          messages: [
-            { role: "system", content: correctionPrompt },
-            { role: "user", content: rawText }
-          ]
-        })
-      });
-      const correctionData = await correctionRes.json();
       let fullText = rawText; // フォールバック: 補正失敗時は元テキストを使用
-      if (correctionData.choices && correctionData.choices[0]) {
-        fullText = correctionData.choices[0].message.content.trim();
+      try {
+        fullText = await callLLM(correctionPrompt, rawText);
         console.log("[VSS] テキスト補正完了 - 補正後文字数:", fullText.length);
-      } else {
-        console.warn("[VSS] テキスト補正失敗 - 元テキストを使用");
+      } catch (corrErr) {
+        console.warn("[VSS] テキスト補正失敗 - 元テキストを使用:", corrErr.message);
       }
 
       const today = new Date();
@@ -858,11 +905,8 @@ document.addEventListener('DOMContentLoaded', async function() {
       }
 
       mainStatus.innerText = "カルテ作成中... (SOAP生成中)";
-      const res2 = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` }, body: JSON.stringify({ model: "gpt-4.1-mini", response_format: { type: "json_object" }, messages: [{ role: "system", content: systemPrompt }, { role: "user", content: fullText }] }) });
-      const data2 = await res2.json();
-      if (data2.error) { throw new Error("GPTエラー: " + (data2.error.message || JSON.stringify(data2.error))); }
-      if (!data2.choices || !data2.choices[0]) { throw new Error("GPTからの応答が不正です: " + JSON.stringify(data2).substring(0, 200)); }
-      const aiJson = JSON.parse(data2.choices[0].message.content);
+      const soapResult = await callLLM(systemPrompt, fullText);
+      const aiJson = JSON.parse(soapResult);
       const soapText = aiJson.soap_text || aiJson.soap || "生成エラー";
 
       const finalTitle = slots[currentSlotId].title;
@@ -914,12 +958,14 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   function loadSettings() {
     try {
-      chrome.storage.local.get(['openai_api_key', 'gas_script_url', 'ref_data', 'custom_dict'], (r) => {
+      chrome.storage.local.get(['openai_api_key', 'gas_script_url', 'ref_data', 'custom_dict', 'llm_provider', 'anthropic_api_key'], (r) => {
         try {
           if (r.openai_api_key) { apiKeyInput.value = r.openai_api_key; if (apiKeySaved) apiKeySaved.style.display = 'block'; }
           if (r.gas_script_url) gasUrlInput.value = r.gas_script_url;
           if (r.ref_data) refDataInput.value = r.ref_data;
           if (r.custom_dict) customDictInput.value = r.custom_dict;
+          if (r.llm_provider) { llmProviderSelect.value = r.llm_provider; anthropicKeyGroup.style.display = r.llm_provider === 'claude' ? 'block' : 'none'; }
+          if (r.anthropic_api_key) { anthropicApiKeyInput.value = r.anthropic_api_key; anthropicKeySaved.style.display = 'block'; }
           console.log("[VSS] 設定読み込み完了");
         } catch(e) {
           console.error("[VSS] 設定適用エラー:", e);
@@ -1065,8 +1111,12 @@ Generated by Vets SOAP Scribe
   async function generateFamilySummary() {
     const soapText = document.getElementById("resSoap").value;
     if (!soapText.trim()) { alert("先にカルテを作成してください。"); return; }
-    const apiKey = apiKeyInput.value.trim();
-    if (!apiKey) { alert("OpenAI APIキーを設定してください。"); return; }
+    const provider = llmProviderSelect ? llmProviderSelect.value : 'openai';
+    if (provider === 'claude') {
+      if (!anthropicApiKeyInput.value.trim()) { alert("Anthropic APIキーを設定してください。"); return; }
+    } else {
+      if (!apiKeyInput.value.trim()) { alert("OpenAI APIキーを設定してください。"); return; }
+    }
 
     familySummaryOverlay.style.display = 'flex';
     familySummaryLoading.style.display = 'block';
@@ -1105,20 +1155,7 @@ Generated by Vets SOAP Scribe
 （再診・予約情報）`;
 
     try {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model: "gpt-4.1-mini",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: soapText }
-          ]
-        })
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-      const summaryText = data.choices[0].message.content.trim();
+      const summaryText = await callLLM(systemPrompt, soapText);
 
       familySummaryContent.value = summaryText;
       familySummaryLoading.style.display = 'none';
