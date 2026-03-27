@@ -96,12 +96,18 @@ var Settings = {
     document.getElementById('sGasUrl').value     = this.get('gas_url');
     document.getElementById('sRefData').value    = this.get('ref_data');
     document.getElementById('sCustomDict').value = this.get('custom_dict');
+    var provider = this.get('llm_provider') || 'openai';
+    document.getElementById('sLlmProvider').value = provider;
+    document.getElementById('sAnthropicKey').value = this.get('anthropic_key');
+    document.getElementById('anthropicKeyGroup').style.display = provider === 'claude' ? 'block' : 'none';
   },
   save: function () {
-    this.set('api_key',     document.getElementById('sApiKey').value.trim());
-    this.set('gas_url',     document.getElementById('sGasUrl').value.trim());
-    this.set('ref_data',    document.getElementById('sRefData').value.trim());
-    this.set('custom_dict', document.getElementById('sCustomDict').value.trim());
+    this.set('api_key',       document.getElementById('sApiKey').value.trim());
+    this.set('gas_url',       document.getElementById('sGasUrl').value.trim());
+    this.set('ref_data',      document.getElementById('sRefData').value.trim());
+    this.set('custom_dict',   document.getElementById('sCustomDict').value.trim());
+    this.set('llm_provider',  document.getElementById('sLlmProvider').value);
+    this.set('anthropic_key', document.getElementById('sAnthropicKey').value.trim());
   }
 };
 
@@ -330,6 +336,49 @@ var Recording = {
 };
 
 
+// ─── LLM統一呼び出し ─────────────────────────────────────────
+async function callLLM(systemPrompt, userContent) {
+  var provider = Settings.get('llm_provider') || 'openai';
+  if (provider === 'claude') {
+    var anthropicKey = Settings.get('anthropic_key');
+    if (!anthropicKey) throw new Error('Anthropic APIキーが設定されていません');
+    var res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6-20250514',
+        max_tokens: 8192,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userContent }]
+      })
+    });
+    var data = await res.json();
+    if (data.error) throw new Error('Claude: ' + (data.error.message || JSON.stringify(data.error)));
+    if (!data.content || !data.content[0]) throw new Error('Claude からの応答が不正です');
+    return data.content[0].text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
+  } else {
+    var apiKey = Settings.get('api_key');
+    if (!apiKey) throw new Error('OpenAI APIキーが設定されていません');
+    var res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({
+        model: 'gpt-4.1-mini',
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }]
+      })
+    });
+    var data = await res.json();
+    if (data.error) throw new Error('GPT: ' + (data.error.message || JSON.stringify(data.error)));
+    if (!data.choices || !data.choices[0]) throw new Error('GPTからの応答が不正です');
+    return data.choices[0].message.content.trim();
+  }
+}
+
 // ─── AI ──────────────────────────────────────────────────────
 var AI = {
   // Step 1: Whisper
@@ -437,18 +486,8 @@ var AI = {
         + '[O]\n[A]\n[P]\n[処置・処方・費用]\n[MEMO]\n受付：　　TEL: /　予約確定日: /';
     }
 
-    var res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
-      body: JSON.stringify({
-        model: 'gpt-4.1-mini',
-        response_format: { type: 'json_object' },
-        messages: [{ role: 'system', content: basePrompt }, { role: 'user', content: fullText }]
-      })
-    });
-    var data = await res.json();
-    if (data.error) throw new Error('GPT: ' + (data.error.message || JSON.stringify(data.error)));
-    var aiJson = JSON.parse(data.choices[0].message.content);
+    var result = await callLLM(basePrompt, fullText);
+    var aiJson = JSON.parse(result);
     return {
       soap_text: SOAP.clean(aiJson.soap_text || aiJson.soap || '生成エラー'),
       full_log:  aiJson.full_log || fullText
@@ -476,17 +515,7 @@ var AI = {
       + '## ご自宅でのお願い\n（注意事項・日常ケア）\n\n'
       + '## 次回の診察\n（再診・予約情報）';
 
-    var res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
-      body: JSON.stringify({
-        model: 'gpt-4.1-mini',
-        messages: [{ role: 'system', content: sys }, { role: 'user', content: soapText }]
-      })
-    });
-    var data = await res.json();
-    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-    return data.choices[0].message.content.trim();
+    return await callLLM(sys, soapText);
   }
 };
 
@@ -1277,6 +1306,9 @@ function bindEvents() {
     UI.hideModal();
     UI.toast('設定を保存しました', 'success');
   });
+  document.getElementById('sLlmProvider').addEventListener('change', function () {
+    document.getElementById('anthropicKeyGroup').style.display = this.value === 'claude' ? 'block' : 'none';
+  });
 
   // 診療項目CSV ドラッグ＆ドロップ
   (function () {
@@ -1426,7 +1458,8 @@ function bindEvents() {
 
   // Recording
   document.getElementById('recStartBtn').addEventListener('click', async function () {
-    if (!Settings.get('api_key')) { UI.toast('設定からAPIキーを入力してください', 'error'); return; }
+    if (!Settings.get('api_key')) { UI.toast('設定からOpenAI APIキー（音声認識用）を入力してください', 'error'); return; }
+    if (Settings.get('llm_provider') === 'claude' && !Settings.get('anthropic_key')) { UI.toast('設定からAnthropic APIキーを入力してください', 'error'); return; }
     // 一時停止中の再開
     if (State.recState === 'paused' && State.mediaStream) {
       Recording.resume();

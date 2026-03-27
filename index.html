@@ -636,8 +636,20 @@
       <button class="modal-close" data-close="settings">✕</button>
     </div>
     <div class="form-group">
-      <label>OpenAI API Key</label>
+      <label>OpenAI API Key（音声認識用）</label>
       <input type="password" id="sApiKey" placeholder="sk-...">
+    </div>
+    <div class="form-group">
+      <label>LLMプロバイダー（テキスト処理用）</label>
+      <select id="sLlmProvider" style="width:100%; padding:8px; border:1px solid var(--border); border-radius:4px;">
+        <option value="openai">OpenAI (GPT-4.1-mini)</option>
+        <option value="claude">Anthropic (Claude Sonnet 4.6)</option>
+      </select>
+      <div class="form-hint">音声認識（Whisper）は常にOpenAI APIを使用します</div>
+    </div>
+    <div class="form-group" id="anthropicKeyGroup" style="display:none;">
+      <label>Anthropic API Key</label>
+      <input type="password" id="sAnthropicKey" placeholder="sk-ant-...">
     </div>
     <div class="form-group">
       <label>Google Sheets Script URL（任意）</label>
