@@ -906,7 +906,18 @@ document.addEventListener('DOMContentLoaded', async function() {
 
       mainStatus.innerText = "カルテ作成中... (SOAP生成中)";
       const soapResult = await callLLM(systemPrompt, fullText);
-      const aiJson = JSON.parse(soapResult);
+      let aiJson;
+      try {
+        aiJson = JSON.parse(soapResult);
+      } catch (e) {
+        const jsonMatch = soapResult.match(/\{[\s\S]*"soap_text"[\s\S]*\}/);
+        if (jsonMatch) {
+          aiJson = JSON.parse(jsonMatch[0]);
+        } else {
+          console.warn('[VSS] JSON抽出失敗、テキストをSOAPとして使用');
+          aiJson = { soap_text: soapResult, full_log: fullText };
+        }
+      }
       const soapText = aiJson.soap_text || aiJson.soap || "生成エラー";
 
       const finalTitle = slots[currentSlotId].title;

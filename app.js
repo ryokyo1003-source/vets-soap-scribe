@@ -487,7 +487,20 @@ var AI = {
     }
 
     var result = await callLLM(basePrompt, fullText);
-    var aiJson = JSON.parse(result);
+    var aiJson;
+    try {
+      aiJson = JSON.parse(result);
+    } catch (e) {
+      // JSONパースに失敗した場合、レスポンスからJSONを抽出
+      var jsonMatch = result.match(/\{[\s\S]*"soap_text"[\s\S]*\}/);
+      if (jsonMatch) {
+        aiJson = JSON.parse(jsonMatch[0]);
+      } else {
+        // JSONが見つからない場合、レスポンス全体をSOAPテキストとして扱う
+        console.warn('[VSS] JSON抽出失敗、テキストをSOAPとして使用');
+        aiJson = { soap_text: result, full_log: fullText };
+      }
+    }
     return {
       soap_text: SOAP.clean(aiJson.soap_text || aiJson.soap || '生成エラー'),
       full_log:  aiJson.full_log || fullText
