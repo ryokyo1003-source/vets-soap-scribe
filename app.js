@@ -611,7 +611,13 @@ var UI = {
                   (p.breed || ''), (p.species || '')].join(' ').toLowerCase();
       return keywords.every(function (kw) { return text.includes(kw); });
     }) : all;
-    list.sort(function (a, b) { return (b.updatedAt || '').localeCompare(a.updatedAt || ''); });
+    // 死亡患者を下に、生存患者を更新日時の降順で
+    list.sort(function (a, b) {
+      var aDead = a.deadDate ? 1 : 0;
+      var bDead = b.deadDate ? 1 : 0;
+      if (aDead !== bDead) return aDead - bDead;
+      return (b.updatedAt || '').localeCompare(a.updatedAt || '');
+    });
 
     var el = document.getElementById('patientList');
     if (!list.length) {
@@ -1476,7 +1482,7 @@ function bindEvents() {
   // Patient list click (delegated)
   document.getElementById('patientList').addEventListener('click', function (e) {
     var item = e.target.closest('.patient-item');
-    if (item) UI.renderPatientView(item.dataset.id);
+    if (item && !item.classList.contains('deceased')) UI.renderPatientView(item.dataset.id);
   });
 
   // Search
