@@ -254,107 +254,75 @@ var SOAP = {
     return plain;
   },
 
-  // Stock用HTML形式コピー
+  // Stock用プレーンテキストコピー（Stock貼り付け専用書式）
   formatForStock: function (soapText, dateStr) {
     var sections = this.parseSections(soapText);
-    var html = '';
+    var lines = [];
 
     // 日付ヘッダ
     if (dateStr) {
-      html += '<h1>[' + dateStr.replace(/（.*）/, '') + ']' + (dateStr.match(/（.*）/) || [''])[0] + '</h1>';
+      lines.push('[' + dateStr.replace(/（.*）/, '') + ']' + (dateStr.match(/（.*）/) || [''])[0]);
     }
 
     // [S]
-    html += '<h2>[S]</h2>';
+    lines.push('', '[S]');
     if (sections.S) {
-      var sLines = sections.S.split('\n');
-      var vitalsLine = '';
-      var items = [];
-      sLines.forEach(function (line) {
+      sections.S.split('\n').forEach(function (line) {
         line = line.trim();
         if (!line) return;
-        if (/^食欲：/.test(line)) { vitalsLine = line; return; }
+        if (/^食欲：/.test(line)) { lines.push('', line); return; }
         if (/^問診時$/.test(line)) return;
-        // 行頭の・▪■を除去
-        line = line.replace(/^[・▪■]\s*/, '');
-        if (!line) return;
-        items.push(line);
+        line = line.replace(/^[・▪]\s*/, '');
+        if (line) lines.push('■ ' + line);
       });
-      if (items.length) {
-        html += '<ul>';
-        items.forEach(function (item) { html += '<li>' + item + '</li>'; });
-        html += '</ul>';
-      }
-      if (vitalsLine) {
-        html += '<p>' + vitalsLine + '</p>';
-      }
     }
 
     // [O]
-    html += '<h2>[O]</h2>';
+    lines.push('', '[O]');
     if (sections.O) {
-      var oLines = sections.O.split('\n');
-      var vitalMatch = sections.O.match(/BW:\s*([^\s]*)\s*kg\s+T:\s*([^\s]*)\s*℃\s+P:\s*([^\s]*)\s*bpm\s*CM\s*\/\s*R:\s*([^\s]*)\s*bpm/i);
-      if (vitalMatch) {
-        html += '<table style="border-collapse:collapse;width:100%;margin:8px 0"><tr>'
-          + '<td style="border:1px solid #ccc;padding:6px">BW: ' + (vitalMatch[1] || '') + ' kg</td>'
-          + '<td style="border:1px solid #ccc;padding:6px">T: ' + (vitalMatch[2] || '') + '℃</td>'
-          + '<td style="border:1px solid #ccc;padding:6px">P: ' + (vitalMatch[3] || '') + ' bpm CM /</td>'
-          + '<td style="border:1px solid #ccc;padding:6px">R: ' + (vitalMatch[4] || '') + ' bpm</td>'
-          + '</tr></table>';
-      }
-      var oItems = [];
-      oLines.forEach(function (line) {
+      sections.O.split('\n').forEach(function (line) {
         line = line.trim();
-        if (!line || /^BW:/.test(line)) return;
-        line = line.replace(/^[・▪■]\s*/, '');
-        if (line) oItems.push(line);
+        if (!line) return;
+        if (/^BW:/.test(line)) { lines.push(line); return; }
+        line = line.replace(/^[・▪]\s*/, '');
+        if (line) lines.push('■ ' + line);
       });
-      if (oItems.length) {
-        html += '<ul>';
-        oItems.forEach(function (item) { html += '<li>' + item + '</li>'; });
-        html += '</ul>';
-      }
     }
 
     // [A]
-    html += '<h2>[A]</h2>';
+    lines.push('', '[A]');
     if (sections.A) {
-      var aItems = sections.A.split('\n').map(function (l) { return l.trim().replace(/^[・▪■]\s*/, ''); }).filter(Boolean);
-      if (aItems.length) {
-        html += '<ul>';
-        aItems.forEach(function (item) { html += '<li>' + item + '</li>'; });
-        html += '</ul>';
-      }
+      sections.A.split('\n').forEach(function (line) {
+        line = line.trim().replace(/^[・▪]\s*/, '');
+        if (line) lines.push('■ ' + line);
+      });
     }
 
     // [P]
-    html += '<h2>[P]</h2>';
+    lines.push('', '[P]');
     if (sections.P) {
-      var pItems = sections.P.split('\n').map(function (l) { return l.trim().replace(/^[・▪■]\s*/, ''); }).filter(Boolean);
-      if (pItems.length) {
-        html += '<ul>';
-        pItems.forEach(function (item) { html += '<li>' + item + '</li>'; });
-        html += '</ul>';
-      }
+      sections.P.split('\n').forEach(function (line) {
+        line = line.trim().replace(/^[・▪]\s*/, '');
+        if (line) lines.push('■ ' + line);
+      });
     }
 
     // [処置・処方・費用]
-    html += '<h2>[処置・処方・費用]</h2>';
+    lines.push('', '[処置・処方・費用]');
     if (sections['処置']) {
-      var tItems = sections['処置'].split('\n').map(function (l) { return l.trim().replace(/^[・▪■]\s*/, ''); }).filter(Boolean);
-      if (tItems.length) {
-        tItems.forEach(function (item) { html += '<p>・' + item + '</p>'; });
-      }
+      sections['処置'].split('\n').forEach(function (line) {
+        line = line.trim().replace(/^[・▪■]\s*/, '');
+        if (line) lines.push('・' + line);
+      });
     }
 
     // [MEMO]
-    html += '<h2>[MEMO]</h2>';
+    lines.push('', '[MEMO]');
     if (sections.MEMO) {
-      html += '<p>' + sections.MEMO.replace(/\n/g, '<br>') + '</p>';
+      lines.push(sections.MEMO.trim());
     }
 
-    return html;
+    return lines.join('\n');
   }
 };
 
@@ -1656,30 +1624,17 @@ function bindEvents() {
     });
   });
 
-  // Copy all (Stock) — HTML形式でリッチテキストコピー
+  // Copy all (Stock)
   document.getElementById('copyStockBtn').addEventListener('click', async function () {
     var soap   = document.getElementById('resSoap').value;
-    var patient = State.currentPatient;
     var d = new Date();
     var days = ['日','月','火','水','木','金','土'];
     var dateStr = d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0') + '（' + days[d.getDay()] + '）';
-    var html = SOAP.formatForStock(soap, dateStr);
-    var plain = SOAP.formatForCopy(soap, patient ? patient.ownerName + '　' + patient.animalName : '', dateStr);
+    var stockText = SOAP.formatForStock(soap, dateStr);
     try {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          'text/html': new Blob([html], { type: 'text/html' }),
-          'text/plain': new Blob([plain], { type: 'text/plain' })
-        })
-      ]);
+      await navigator.clipboard.writeText(stockText);
       UI.toast('Stockにコピーしました', 'success');
-    } catch (e) {
-      // フォールバック: プレーンテキスト
-      try {
-        await navigator.clipboard.writeText(plain);
-        UI.toast('コピーしました（プレーンテキスト）', 'success');
-      } catch (e2) { UI.toast('コピー失敗', 'error'); }
-    }
+    } catch (e) { UI.toast('コピー失敗', 'error'); }
   });
 
   // Save visit

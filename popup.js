@@ -280,79 +280,68 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
   });
 
-  // ■ Stock全体コピー（HTML形式リッチテキスト）
+  // ■ Stock全体コピー（Stock貼り付け専用書式）
   function formatForStock(soapText, dateStr) {
     const sections = parseSoapSections(soapText);
-    let html = '';
+    const lines = [];
 
     if (dateStr) {
-      html += '<h1>[' + dateStr.replace(/（.*）/, '') + ']' + (dateStr.match(/（.*）/) || [''])[0] + '</h1>';
+      lines.push('[' + dateStr.replace(/（.*）/, '') + ']' + (dateStr.match(/（.*）/) || [''])[0]);
     }
 
-    // [S]
-    html += '<h2>[S]</h2>';
+    lines.push('', '[S]');
     if (sections.S) {
-      const sLines = sections.S.split('\n');
-      let vitalsLine = '';
-      const items = [];
-      sLines.forEach(line => {
+      sections.S.split('\n').forEach(line => {
         line = line.trim();
         if (!line) return;
-        if (/^食欲：/.test(line)) { vitalsLine = line; return; }
+        if (/^食欲：/.test(line)) { lines.push('', line); return; }
         if (/^問診時$/.test(line)) return;
-        line = line.replace(/^[・▪■]\s*/, '');
-        if (line) items.push(line);
+        line = line.replace(/^[・▪]\s*/, '');
+        if (line) lines.push('■ ' + line);
       });
-      if (items.length) {
-        html += '<ul>' + items.map(item => '<li>' + item + '</li>').join('') + '</ul>';
-      }
-      if (vitalsLine) html += '<p>' + vitalsLine + '</p>';
     }
 
-    // [O]
-    html += '<h2>[O]</h2>';
+    lines.push('', '[O]');
     if (sections.O) {
-      const vitalMatch = sections.O.match(/BW:\s*([^\s]*)\s*kg\s+T:\s*([^\s]*)\s*℃\s+P:\s*([^\s]*)\s*bpm\s*CM\s*\/\s*R:\s*([^\s]*)\s*bpm/i);
-      if (vitalMatch) {
-        html += '<table style="border-collapse:collapse;width:100%;margin:8px 0"><tr>'
-          + '<td style="border:1px solid #ccc;padding:6px">BW: ' + (vitalMatch[1] || '') + ' kg</td>'
-          + '<td style="border:1px solid #ccc;padding:6px">T: ' + (vitalMatch[2] || '') + '℃</td>'
-          + '<td style="border:1px solid #ccc;padding:6px">P: ' + (vitalMatch[3] || '') + ' bpm CM /</td>'
-          + '<td style="border:1px solid #ccc;padding:6px">R: ' + (vitalMatch[4] || '') + ' bpm</td>'
-          + '</tr></table>';
-      }
-      const oItems = sections.O.split('\n').map(l => l.trim()).filter(l => l && !/^BW:/.test(l)).map(l => l.replace(/^[・▪■]\s*/, '')).filter(Boolean);
-      if (oItems.length) {
-        html += '<ul>' + oItems.map(item => '<li>' + item + '</li>').join('') + '</ul>';
-      }
+      sections.O.split('\n').forEach(line => {
+        line = line.trim();
+        if (!line) return;
+        if (/^BW:/.test(line)) { lines.push(line); return; }
+        line = line.replace(/^[・▪]\s*/, '');
+        if (line) lines.push('■ ' + line);
+      });
     }
 
-    // [A]
-    html += '<h2>[A]</h2>';
+    lines.push('', '[A]');
     if (sections.A) {
-      const aItems = sections.A.split('\n').map(l => l.trim().replace(/^[・▪■]\s*/, '')).filter(Boolean);
-      if (aItems.length) html += '<ul>' + aItems.map(item => '<li>' + item + '</li>').join('') + '</ul>';
+      sections.A.split('\n').forEach(line => {
+        line = line.trim().replace(/^[・▪]\s*/, '');
+        if (line) lines.push('■ ' + line);
+      });
     }
 
-    // [P]
-    html += '<h2>[P]</h2>';
+    lines.push('', '[P]');
     if (sections.P) {
-      const pItems = sections.P.split('\n').map(l => l.trim().replace(/^[・▪■]\s*/, '')).filter(Boolean);
-      if (pItems.length) html += '<ul>' + pItems.map(item => '<li>' + item + '</li>').join('') + '</ul>';
+      sections.P.split('\n').forEach(line => {
+        line = line.trim().replace(/^[・▪]\s*/, '');
+        if (line) lines.push('■ ' + line);
+      });
     }
 
-    // [処置・処方・費用]
-    html += '<h2>[処置・処方・費用]</h2>';
+    lines.push('', '[処置・処方・費用]');
     if (sections['処置']) {
-      const tItems = sections['処置'].split('\n').map(l => l.trim().replace(/^[・▪■]\s*/, '')).filter(Boolean);
-      if (tItems.length) tItems.forEach(item => { html += '<p>・' + item + '</p>'; });
+      sections['処置'].split('\n').forEach(line => {
+        line = line.trim().replace(/^[・▪■]\s*/, '');
+        if (line) lines.push('・' + line);
+      });
     }
 
-    // [MEMO]
-    html += '<h2>[MEMO]</h2>';
-    if (sections.MEMO) html += '<p>' + sections.MEMO.replace(/\n/g, '<br>') + '</p>';
+    lines.push('', '[MEMO]');
+    if (sections.MEMO) {
+      lines.push(sections.MEMO.trim());
+    }
 
-    return html;
+    return lines.join('\n');
   }
 
   const copyBtn = document.getElementById("copyStockBtn");
@@ -364,12 +353,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         const days = ["日", "月", "火", "水", "木", "金", "土"];
         const dateStr = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}（${days[d.getDay()]}）`;
 
-        const html = formatForStock(soapRaw, dateStr);
-        const plain = soapRaw;
-
-        const blobHtml = new Blob([html], { type: "text/html" });
-        const blobText = new Blob([plain], { type: "text/plain" });
-        await navigator.clipboard.write([new ClipboardItem({ "text/html": blobHtml, "text/plain": blobText })]);
+        const stockText = formatForStock(soapRaw, dateStr);
+        await navigator.clipboard.writeText(stockText);
 
         const originalText = copyBtn.innerText;
         copyBtn.innerText = "✅ Stockにコピー完了！";
