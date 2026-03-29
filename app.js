@@ -620,9 +620,11 @@ var UI = {
     }
     el.innerHTML = list.map(function (p) {
       var active = p.id === State.currentPatientId ? ' active' : '';
+      var dead = p.deadDate ? ' deceased' : '';
       var chartLabel = p.chartNo ? p.chartNo : '';
-      return '<div class="patient-item' + active + '" data-id="' + p.id + '">'
-        + '<div class="pt-chart-line">' + chartLabel + '</div>'
+      var deadBadge = p.deadDate ? '<span class="dead-badge">死亡</span>' : '';
+      return '<div class="patient-item' + active + dead + '" data-id="' + p.id + '">'
+        + '<div class="pt-chart-line">' + chartLabel + deadBadge + '</div>'
         + '<div class="pt-name">' + (p.ownerName || '') + '　<b>' + (p.animalName || '') + '</b></div>'
         + '</div>';
     }).join('');
@@ -1084,6 +1086,7 @@ var CSVSync = {
       sex:        /^sex$|^gender$|性別/i,
       birthDate:  /^birth|生年月日|誕生日/i,
       weight:     /^weight$|体重/i,
+      deadDate:   /^pet_dead_date$|死亡日|死亡/i,
       // ハロペ固有: カルテ番号生成用
       ownerNumber: /^owner_number$|飼主番号|顧客番号|オーナー番号/i
     };
@@ -1227,6 +1230,7 @@ var CSVSync = {
       var birthDate = m.birthDate >= 0 ? this._normalizeBirthDate(row[m.birthDate] || '') : '';
       var weight    = m.weight    >= 0 ? (parseFloat(row[m.weight]) || 0) : 0;
       var breed     = m.breed     >= 0 ? (row[m.breed] || '').trim() : '';
+      var deadDate  = m.deadDate  >= 0 ? (row[m.deadDate] || '').trim() : '';
       var now       = new Date().toISOString();
 
       if (existing) {
@@ -1234,8 +1238,10 @@ var CSVSync = {
         var upd = function (field, val) { if (val && existing[field] !== val) { existing[field] = val; changed = true; } };
         upd('chartNo', chartNo); upd('ownerName', ownerName); upd('animalName', animalName);
         upd('species', species); upd('breed', breed); upd('sex', sex);
-        upd('birthDate', birthDate);
+        upd('birthDate', birthDate); upd('deadDate', deadDate);
         if (weight && existing.weight !== weight) { existing.weight = weight; changed = true; }
+        // deadDateが空になった場合（誤登録の修正）も反映
+        if (!deadDate && existing.deadDate) { existing.deadDate = ''; changed = true; }
         if (changed) { existing.updatedAt = now; await DB.patients.put(existing); updated++; }
       } else {
         var np = {
@@ -1243,7 +1249,7 @@ var CSVSync = {
           chartNo:   chartNo || DB.nextChartNo(all),
           ownerName: ownerName, animalName: animalName,
           species: species, breed: breed, sex: sex,
-          birthDate: birthDate, weight: weight,
+          birthDate: birthDate, weight: weight, deadDate: deadDate,
           notes: '', createdAt: now, updatedAt: now
         };
         await DB.patients.add(np);
