@@ -540,7 +540,7 @@ var AI = {
         + '- [P]は治療計画・処方・飼い主への指導・次回予定。[A]の診断に対して「何をするか」を書く。\n'
         + '- [MEMO]の各項目は会話中で明確に言及された情報のみ記入。推測で埋めないこと。\n\n'
         + patientContext
-        + '【院内マスタDB】\n' + (refData || 'データなし') + '\n\n'
+        + (refData ? '【対象患者情報】\n' + refData + '\n\n' : '')
         + '# 出力フォーマット（厳守）\n\n'
         + '[S]\n主訴：〇〇\n問診時\n（簡潔な項目を改行区切りで列挙）\n\n食欲：　　元気：　　排尿：　　排便：　　嘔吐：\n\n'
         + '[O]\nBW: ○○ kg　　T: ○○℃　　P: ○○ bpm CM /　　R: ○○ bpm\n\n'
@@ -562,7 +562,7 @@ var AI = {
         + '- [O][A][P][処置・処方・費用]: 見出しのみ出力し中身は完全に空欄。\n'
         + '- 情報がない項目は一切出力しないこと。\n\n'
         + patientContext
-        + '【参照マスタDB】\n' + (refData || 'データなし') + '\n\n'
+        + (refData ? '【対象患者情報】\n' + refData + '\n\n' : '')
         + '# 出力フォーマット（厳守）\n\n'
         + '[S]\n主訴：〇〇\n問診時\n（簡潔な項目を改行区切りで列挙）\n\n食欲：　　元気：　　排尿：　　排便：　　嘔吐：\n\n'
         + '[O]\n[A]\n[P]\n[処置・処方・費用]\n[MEMO]\n受付：　　TEL: /　予約確定日: /';
@@ -908,9 +908,18 @@ var FamilySummary = {
 // ─── Main recording flow ──────────────────────────────────────
 async function runProcessWithAI(audioBlob) {
   var apiKey  = Settings.get('api_key');
-  var refData = Settings.get('ref_data');
   var mode    = document.getElementById('modeSelect').value;
   var patient = State.currentPatient;
+
+  // 患者コンテキストのみ生成（全マスタデータは送らない）
+  var patientRef = '';
+  if (patient) {
+    var parts = [patient.chartNo, patient.ownerName, patient.animalName,
+                 patient.species, patient.breed, patient.sex].filter(Boolean);
+    patientRef = parts.join(', ');
+    if (patient.weight) patientRef += ', 体重:' + patient.weight + 'kg';
+    if (patient.birthDate) patientRef += ', 生年月日:' + patient.birthDate;
+  }
 
   if (!apiKey) { UI.toast('設定からAPIキーを入力してください', 'error'); return; }
 
@@ -919,7 +928,7 @@ async function runProcessWithAI(audioBlob) {
     var rawText = await AI.transcribe(audioBlob, apiKey, Settings.get('custom_dict'));
 
     UI.setProcessing('SOAPカルテを生成中...');
-    var result = await AI.generateSOAP(rawText, patient, refData, mode, apiKey);
+    var result = await AI.generateSOAP(rawText, patient, patientRef, mode, apiKey);
 
     UI.setProcessing(null);
 
