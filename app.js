@@ -231,13 +231,58 @@ var SOAP = {
     return extra;
   },
 
-  checkMissing: function (soapText, mode) {
+  checkMissing: function (soapText, mode, patient) {
     var warn = [];
-    if (!/・主訴：/.test(soapText)) warn.push('⚠️ [S] 主訴が未記載です');
+    if (!/主訴：/.test(soapText)) warn.push('⚠️ [S] 主訴が未記載です');
     if (mode === 'soap') {
       if (!/BW:/.test(soapText)) warn.push('⚠️ [O] 体重(BW)が未記載です');
       if (!/T:/.test(soapText))  warn.push('⚠️ [O] 体温(T)が未記載です');
     }
+
+    // 数値の妥当性チェック
+    var bwMatch = soapText.match(/BW:\s*([\d.]+)\s*kg/i);
+    if (bwMatch) {
+      var bw = parseFloat(bwMatch[1]);
+      var species = (patient && patient.species) ? patient.species : '';
+
+      // 種別ごとの体重範囲（kg）
+      var weightRanges = {
+        '犬':     { min: 0.5,  max: 80,  label: '犬' },
+        '猫':     { min: 1.0,  max: 12,  label: '猫' },
+        'うさぎ': { min: 0.5,  max: 6,   label: 'うさぎ' },
+        '鳥':     { min: 0.01, max: 1.5, label: '鳥' },
+        'ハムスター': { min: 0.02, max: 0.06, label: 'ハムスター' },
+        'フェレット': { min: 0.5,  max: 2.5,  label: 'フェレット' },
+        'モルモット': { min: 0.5,  max: 1.5,  label: 'モルモット' },
+        'チンチラ':   { min: 0.3,  max: 0.8,  label: 'チンチラ' },
+        'デグー':     { min: 0.15, max: 0.35, label: 'デグー' }
+      };
+
+      var range = weightRanges[species];
+      if (range) {
+        if (bw < range.min) warn.push('⚠️ [O] 体重 ' + bw + 'kg は' + range.label + 'として異常に軽い（通常 ' + range.min + '〜' + range.max + 'kg）。Whisperの数値誤認識の可能性あり');
+        if (bw > range.max) warn.push('⚠️ [O] 体重 ' + bw + 'kg は' + range.label + 'として異常に重い（通常 ' + range.min + '〜' + range.max + 'kg）');
+      }
+      // 種別不明でも極端な値を検出
+      if (bw < 0.01) warn.push('⚠️ [O] 体重 ' + bw + 'kg は異常値です。Whisperの数値誤認識の可能性あり');
+    }
+
+    // 体温チェック（全種共通）
+    var tMatch = soapText.match(/T:\s*([\d.]+)\s*℃/i);
+    if (tMatch) {
+      var temp = parseFloat(tMatch[1]);
+      if (temp > 0 && temp < 35) warn.push('⚠️ [O] 体温 ' + temp + '℃ は異常に低い（通常37〜40℃）。数値誤認識の可能性あり');
+      if (temp > 42) warn.push('⚠️ [O] 体温 ' + temp + '℃ は異常に高い（通常37〜40℃）');
+    }
+
+    // 手術時間チェック（全身麻酔を伴う処置で5分未満は疑わしい）
+    var surgeryMatch = soapText.match(/手術時間[：:]*\s*([\d.]+)\s*[〜~～\-−ー]\s*([\d.]+)?\s*分/);
+    if (!surgeryMatch) surgeryMatch = soapText.match(/([\d.]+)\s*[〜~～\-−ー]\s*([\d.]+)\s*分.*(?:手術|オペ|麻酔)/);
+    if (surgeryMatch) {
+      var surgMin = parseFloat(surgeryMatch[1]);
+      if (surgMin < 10) warn.push('⚠️ [P] 手術時間 ' + surgeryMatch[0] + ' は短すぎる可能性あり。Whisperの数値誤認識（例: 30分→3分）を確認してください');
+    }
+
     return warn;
   },
 
@@ -939,7 +984,7 @@ async function runProcessWithAI(audioBlob) {
     document.getElementById('saveVisitBtn').textContent = '💾 カルテに保存';
     document.getElementById('saveVisitBtn').disabled = false;
 
-    var warnings = SOAP.checkMissing(result.soap_text, mode);
+    var warnings = SOAP.checkMissing(result.soap_text, mode, patient);
     var warnEl = document.getElementById('missingWarning');
     if (warnings.length) { warnEl.innerHTML = warnings.join('<br>'); warnEl.style.display = 'block'; }
     else { warnEl.style.display = 'none'; }

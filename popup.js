@@ -566,6 +566,28 @@ document.addEventListener('DOMContentLoaded', async function() {
       if (soapText.match(/予防接種|ワクチン/) && !soapText.match(/ロット|接種部位|次回/)) {
         warnings.push("⚠️ 予防接種: ロット番号・接種部位の記載を確認してください");
       }
+
+      // 数値の妥当性チェック
+      const bwMatch = soapText.match(/BW:\s*([\d.]+)\s*kg/i);
+      if (bwMatch) {
+        const bw = parseFloat(bwMatch[1]);
+        if (bw < 0.01) warnings.push("⚠️ [O] 体重 " + bw + "kg は異常値です。数値誤認識の可能性あり");
+      }
+
+      const tMatch = soapText.match(/T:\s*([\d.]+)\s*℃/i);
+      if (tMatch) {
+        const temp = parseFloat(tMatch[1]);
+        if (temp > 0 && temp < 35) warnings.push("⚠️ [O] 体温 " + temp + "℃ は異常に低い（通常37〜40℃）");
+        if (temp > 42) warnings.push("⚠️ [O] 体温 " + temp + "℃ は異常に高い（通常37〜40℃）");
+      }
+
+      // 手術時間チェック
+      let surgMatch = soapText.match(/手術時間[：:]*\s*([\d.]+)\s*[〜~～\-−ー]\s*([\d.]+)?\s*分/);
+      if (!surgMatch) surgMatch = soapText.match(/([\d.]+)\s*[〜~～\-−ー]\s*([\d.]+)\s*分.*(?:手術|オペ|麻酔)/);
+      if (surgMatch) {
+        const surgMin = parseFloat(surgMatch[1]);
+        if (surgMin < 10) warnings.push("⚠️ [P] 手術時間 " + surgMatch[0] + " は短すぎる可能性あり。数値誤認識を確認してください");
+      }
     }
 
     return warnings;
