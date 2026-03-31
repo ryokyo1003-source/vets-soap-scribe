@@ -85,6 +85,30 @@
     }
     #searchInput:focus { border-color: var(--primary); background: #fff; }
 
+    /* Date filter */
+    .date-filter-row {
+      display: flex; gap: 4px; margin-top: 6px; align-items: center;
+    }
+    .date-filter-row input[type="date"] {
+      flex: 1; padding: 5px 6px; border: 1px solid var(--border);
+      border-radius: 6px; font-size: 11px; outline: none; background: var(--bg);
+      min-width: 0;
+    }
+    .date-filter-row input[type="date"]:focus { border-color: var(--primary); background: #fff; }
+    .date-filter-btn {
+      padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+      font-size: 11px; font-weight: bold; cursor: pointer; background: var(--bg);
+      color: var(--text); transition: 0.15s; white-space: nowrap;
+    }
+    .date-filter-btn:hover { background: var(--primary-light); border-color: var(--primary); color: var(--primary); }
+    #dateFilterInfo {
+      display: none; padding: 6px 10px; margin-top: 6px;
+      background: var(--primary-light); border: 1px solid var(--primary);
+      border-radius: 6px; font-size: 11px; font-weight: bold;
+      color: var(--primary); text-align: center;
+    }
+    #dateFilterInfo.active { display: block; }
+
     #patientList {
       flex: 1; overflow-y: auto; padding: 6px 0;
     }
@@ -448,7 +472,13 @@
   <aside id="sidebar">
     <div class="sidebar-top">
       <button id="newPatientBtn">＋ 新規患者登録</button>
-      <input type="text" id="searchInput" placeholder="🔍 患者名 / カルテ番号">
+      <input type="text" id="searchInput" placeholder="🔍 患者名 / カルテ番号 / 日付">
+      <div class="date-filter-row">
+        <input type="date" id="dateFilter">
+        <button id="dateFilterToday" class="date-filter-btn">今日</button>
+        <button id="dateFilterClear" class="date-filter-btn">クリア</button>
+      </div>
+      <div id="dateFilterInfo"></div>
     </div>
     <div id="patientList">
       <div class="no-patients">患者を登録してください</div>

@@ -660,6 +660,78 @@ var AI = {
 };
 
 
+// ─── Date Search Helper ─────────────────────────────────────
+var DateSearch = {
+  // Parse various Japanese/numeric date formats into "YYYY-MM-DD" or null
+  parseQuery: function (q) {
+    q = q.trim();
+    var m, month, day, year;
+    var now = new Date();
+    var curYear = now.getFullYear();
+
+    // "2026/3/31" or "2026/03/31" or "2026-3-31"
+    m = q.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+    if (m) return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
+
+    // "3/31" or "03/31" or "3-31"
+    m = q.match(/^(\d{1,2})[\/\-](\d{1,2})$/);
+    if (m) {
+      month = parseInt(m[1], 10); day = parseInt(m[2], 10);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31)
+        return curYear + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    }
+
+    // "20260331" (8 digits)
+    m = q.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (m) {
+      month = parseInt(m[2], 10); day = parseInt(m[3], 10);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31)
+        return m[1] + '-' + m[2] + '-' + m[3];
+    }
+
+    // "0331" (4 digits, MMDD)
+    m = q.match(/^(\d{2})(\d{2})$/);
+    if (m) {
+      month = parseInt(m[1], 10); day = parseInt(m[2], 10);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31)
+        return curYear + '-' + m[1] + '-' + m[2];
+    }
+
+    // "3月31日" or "03月31日" or "3月31"
+    m = q.match(/^(\d{1,2})月(\d{1,2})日?$/);
+    if (m) {
+      month = parseInt(m[1], 10); day = parseInt(m[2], 10);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31)
+        return curYear + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    }
+
+    // "2026年3月31日"
+    m = q.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日?$/);
+    if (m) {
+      month = parseInt(m[2], 10); day = parseInt(m[3], 10);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31)
+        return m[1] + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    }
+
+    return null;
+  },
+
+  // Format "YYYY-MM-DD" to "M月D日"
+  formatJP: function (dateStr) {
+    var parts = dateStr.split('-');
+    return parseInt(parts[1], 10) + '月' + parseInt(parts[2], 10) + '日';
+  },
+
+  // Get visits matching a date string "YYYY-MM-DD"
+  filterVisitsByDate: function (visits, dateStr) {
+    return visits.filter(function (v) {
+      var vDate = (v.date || v.createdAt || '').slice(0, 10);
+      return vDate === dateStr;
+    });
+  }
+};
+
+
 // ─── UI helpers ──────────────────────────────────────────────
 var UI = {
   toast: function (msg, type) {
@@ -720,14 +792,64 @@ var UI = {
 
   renderPatientList: async function () {
     var all  = await DB.patients.getAll();
-    var q    = (document.getElementById('searchInput').value || '').trim().toLowerCase();
-    var keywords = q ? q.split(/[\s　]+/).filter(Boolean) : [];
-    var list = keywords.length ? all.filter(function (p) {
-      var text = [(p.chartNo || ''), (p.ownerName || ''), (p.animalName || ''),
-                  (p.breed || ''), (p.species || '')].join(' ').toLowerCase();
-      return keywords.every(function (kw) { return text.includes(kw); });
-    }) : all;
-    // 死亡患者を下に、生存患者を更新日時の降順で
+    var q    = (document.getElementById('searchInput').value || '').trim();
+    var dateFilterVal = (document.getElementById('dateFilter') || {}).value || '';
+    var infoEl = document.getElementById('dateFilterInfo');
+
+    // Determine if we're in date search mode
+    var dateStr = null;
+    var dateSource = ''; // 'search' or 'picker'
+
+    // Check date picker first
+    if (dateFilterVal) {
+      dateStr = dateFilterVal; // already YYYY-MM-DD
+      dateSource = 'picker';
+    }
+
+    // Check if search query looks like a date (only if no picker date set)
+    if (!dateStr && q) {
+      var parsed = DateSearch.parseQuery(q);
+      if (parsed) {
+        dateStr = parsed;
+        dateSource = 'search';
+      }
+    }
+
+    var list, visitCountMap = {};
+
+    if (dateStr) {
+      // Date search mode: find patients with visits on that date
+      var allVisits = await DB.visits.getAll();
+      var matched = DateSearch.filterVisitsByDate(allVisits, dateStr);
+      var patientIds = {};
+      matched.forEach(function (v) {
+        patientIds[v.patientId] = (patientIds[v.patientId] || 0) + 1;
+      });
+      visitCountMap = patientIds;
+      var ptMap = {};
+      all.forEach(function (p) { ptMap[p.id] = p; });
+      list = Object.keys(patientIds).map(function (pid) { return ptMap[pid]; }).filter(Boolean);
+
+      // Show info badge
+      if (infoEl) {
+        infoEl.textContent = DateSearch.formatJP(dateStr) + ' の診察: ' + matched.length + '件';
+        infoEl.classList.add('active');
+      }
+    } else {
+      // Normal patient search mode
+      var qLower = q.toLowerCase();
+      var keywords = qLower ? qLower.split(/[\s　]+/).filter(Boolean) : [];
+      list = keywords.length ? all.filter(function (p) {
+        var text = [(p.chartNo || ''), (p.ownerName || ''), (p.animalName || ''),
+                    (p.breed || ''), (p.species || '')].join(' ').toLowerCase();
+        return keywords.every(function (kw) { return text.includes(kw); });
+      }) : all;
+
+      // Hide info badge
+      if (infoEl) { infoEl.classList.remove('active'); }
+    }
+
+    // Sort: 死亡患者を下に、生存患者を更新日時の降順で
     list.sort(function (a, b) {
       var aDead = a.deadDate ? 1 : 0;
       var bDead = b.deadDate ? 1 : 0;
@@ -737,7 +859,10 @@ var UI = {
 
     var el = document.getElementById('patientList');
     if (!list.length) {
-      el.innerHTML = '<div class="no-patients">' + (q ? '該当患者なし' : '患者を登録してください') + '</div>';
+      var emptyMsg = dateStr
+        ? DateSearch.formatJP(dateStr) + ' の診察記録はありません'
+        : (q ? '該当患者なし' : '患者を登録してください');
+      el.innerHTML = '<div class="no-patients">' + emptyMsg + '</div>';
       return;
     }
     el.innerHTML = list.map(function (p) {
@@ -745,8 +870,11 @@ var UI = {
       var dead = p.deadDate ? ' deceased' : '';
       var chartLabel = p.chartNo ? p.chartNo : '';
       var deadBadge = p.deadDate ? '<span class="dead-badge">死亡</span>' : '';
+      var visitBadge = visitCountMap[p.id]
+        ? '<span style="font-size:10px;color:var(--primary);float:right;">' + visitCountMap[p.id] + '件</span>'
+        : '';
       return '<div class="patient-item' + active + dead + '" data-id="' + p.id + '">'
-        + '<div class="pt-chart-line">' + chartLabel + deadBadge + '</div>'
+        + '<div class="pt-chart-line">' + chartLabel + deadBadge + visitBadge + '</div>'
         + '<div class="pt-name">' + (p.ownerName || '') + '　<b>' + (p.animalName || '') + '</b></div>'
         + '</div>';
     }).join('');
@@ -1615,6 +1743,24 @@ function bindEvents() {
   document.getElementById('searchInput').addEventListener('input', function () {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(UI.renderPatientList, 250);
+  });
+
+  // Date filter
+  document.getElementById('dateFilter').addEventListener('change', function () {
+    UI.renderPatientList();
+  });
+  document.getElementById('dateFilterToday').addEventListener('click', function () {
+    var today = new Date();
+    var y = today.getFullYear();
+    var m = String(today.getMonth() + 1).padStart(2, '0');
+    var d = String(today.getDate()).padStart(2, '0');
+    document.getElementById('dateFilter').value = y + '-' + m + '-' + d;
+    UI.renderPatientList();
+  });
+  document.getElementById('dateFilterClear').addEventListener('click', function () {
+    document.getElementById('dateFilter').value = '';
+    document.getElementById('searchInput').value = '';
+    UI.renderPatientList();
   });
 
   // Recording
