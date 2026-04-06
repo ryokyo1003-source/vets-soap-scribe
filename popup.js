@@ -55,6 +55,9 @@ document.addEventListener('DOMContentLoaded', async function() {
   let recognition = null;
   let tempAudioChunks = [];
   let micLabel = "Unknown";
+  let chunkTimer = null;
+  let currentStream = null;
+  const CHUNK_INTERVAL_MS = 5 * 60 * 1000; // 5分ごとにチャンク分割
 
   // ■ 獣医療用語辞書（Whisper認識精度向上用）
   const vetDictionary = [
@@ -227,16 +230,38 @@ document.addEventListener('DOMContentLoaded', async function() {
 
       mediaRecorder = new MediaRecorder(stream);
       tempAudioChunks = [];
+      currentStream = stream;
       mediaRecorder.ondataavailable = (e) => tempAudioChunks.push(e.data);
 
       mediaRecorder.onstop = () => {
         const blob = new Blob(tempAudioChunks, { type: "audio/webm" });
         slots[currentSlotId].blobs.push(blob);
-        stream.getTracks().forEach(t => t.stop());
       };
 
       startRecognition();
       mediaRecorder.start();
+
+      // 5分ごとにレコーダーを停止→再開してチャンク分割
+      if (chunkTimer) clearInterval(chunkTimer);
+      chunkTimer = setInterval(() => {
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+          const origOnStop = mediaRecorder.onstop;
+          mediaRecorder.onstop = () => {
+            if (origOnStop) origOnStop();
+            // 新しいレコーダーを開始
+            tempAudioChunks = [];
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.ondataavailable = (e) => tempAudioChunks.push(e.data);
+            mediaRecorder.onstop = () => {
+              const blob = new Blob(tempAudioChunks, { type: "audio/webm" });
+              slots[currentSlotId].blobs.push(blob);
+            };
+            mediaRecorder.start();
+            console.log("[VSS] チャンク分割: セグメント数=" + slots[currentSlotId].blobs.length);
+          };
+          mediaRecorder.stop();
+        }
+      }, CHUNK_INTERVAL_MS);
 
       slots[currentSlotId].state = "recording";
       updateScreenState("recording");
@@ -247,7 +272,10 @@ document.addEventListener('DOMContentLoaded', async function() {
   pauseBtn.addEventListener('click', async () => { await pauseRecording(true); });
 
   stopBtn.addEventListener('click', async () => {
+    if (chunkTimer) { clearInterval(chunkTimer); chunkTimer = null; }
     if (mediaRecorder && mediaRecorder.state === "recording") await pauseRecording(false);
+    // ストリームを停止
+    if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
     const currentData = slots[currentSlotId];
 
     if (currentData.blobs.length === 0) {
@@ -257,9 +285,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     mainStatus.innerText = "カルテ作成中... (音声解析中)";
     recBtn.style.display = "none"; pauseBtn.style.display = "none"; stopBtn.style.display = "none";
 
-    const finalBlob = new Blob(currentData.blobs, { type: "audio/webm" });
     const selectedMode = modeSelect.value;
-    await processWithAI(finalBlob, apiKeyInput.value, refDataInput.value, selectedMode);
+    // セグメント配列をそのまま渡して並列Whisper処理
+    await processWithAI(currentData.blobs, apiKeyInput.value, refDataInput.value, selectedMode);
   });
 
   // ■ セクション別コピーボタン
@@ -409,6 +437,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   }
 
   async function pauseRecording(generateTitle = false) {
+    if (chunkTimer) { clearInterval(chunkTimer); chunkTimer = null; }
     return new Promise((resolve) => {
       if (mediaRecorder && mediaRecorder.state === "recording") {
         mainStatus.innerText = "データ保存中...";
@@ -705,33 +734,78 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
   }
 
-  // ■ AI処理
-  async function processWithAI(audioBlob, apiKey, refData, selectedMode) {
+  // ■ 単一セグメントのWhisper文字起こし
+  async function transcribeSegment(audioBlob, apiKey) {
+    const formData = new FormData();
+    formData.append("file", audioBlob, "audio.webm");
+    formData.append("model", "whisper-1");
+    formData.append("language", "ja");
+
+    const customDict = customDictInput.value.trim();
+    const customTerms = customDict ? customDict.split(/\n/).filter(t => t.trim()).join("、") : "";
+
+    const whisperPrompt = `獣医師の診察会話です。`
+      + `薬：アポキル、リブレラ、ソレンシア、シンパリカ、ネクスガード、レボリューション、セレニア、プレドニゾロン、クロミプラミン、ピモベンダン、フォルテコール、フロセミド、アモキシシリン、セファレキシン、ガバペンチン、メトロニダゾール、ミルベマイシン、アンチノール。`
+      + `病名：天疱瘡、僧帽弁閉鎖不全症、膝蓋骨脱臼、椎間板ヘルニア、変形性関節症、反応性過形成、子宮蓄膿症、甲状腺機能亢進症、副腎皮質機能亢進症、糖尿病、慢性腎臓病、膵炎、肝リピドーシス、肥満細胞腫、リンパ腫、血管肉腫、乳腺腫瘍。`
+      + `検査：細胞診、病理検査、血液検査、生化学検査、エコー、レントゲン、心電図、尿検査、皮下輸液、涙管洗浄。`
+      + `解剖：僧帽弁、三尖弁、肛門腺、甲状腺、副腎、脾臓、膀胱、前立腺、靭帯、前十字靭帯、盲腸便。`
+      + (customTerms ? `院内：${customTerms}。` : "");
+    formData.append("temperature", "0");
+    formData.append("prompt", whisperPrompt.substring(0, 500));
+
+    const res1 = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { "Authorization": `Bearer ${apiKey}` }, body: formData });
+    const data1 = await res1.json();
+    if (data1.error) { throw new Error("Whisperエラー: " + (data1.error.message || JSON.stringify(data1.error))); }
+    if (!data1.text) { throw new Error("音声の文字起こしが空でした。録音内容を確認してください。"); }
+    return data1.text;
+  }
+
+  // ■ ハルシネーション検出（繰り返しフレーズ検出）
+  function detectHallucination(text) {
+    const sentences = text.split(/[。．.！!？?\n]+/).filter(s => s.trim().length > 5);
+    const warnings = [];
+    let repeatCount = 1;
+    for (let i = 1; i < sentences.length; i++) {
+      if (sentences[i].trim() === sentences[i - 1].trim()) {
+        repeatCount++;
+        if (repeatCount >= 3) {
+          warnings.push('Whisperハルシネーション検出: 「' + sentences[i].trim().substring(0, 20) + '...」が' + repeatCount + '回繰り返されています');
+          break;
+        }
+      } else {
+        repeatCount = 1;
+      }
+    }
+    return warnings;
+  }
+
+  // ■ AI処理（セグメント配列を並列Whisper処理）
+  async function processWithAI(audioSegments, apiKey, refData, selectedMode) {
     try {
-      const formData = new FormData();
-      formData.append("file", audioBlob, "audio.webm");
-      formData.append("model", "whisper-1");
-      formData.append("language", "ja");
+      const segCount = audioSegments.length;
+      mainStatus.innerText = `カルテ作成中... (Whisper文字起こし 0/${segCount} セグメント)`;
 
-      // Whisperプロンプト最適化：文脈付きの自然な文章形式で認識精度を向上
-      const customDict = customDictInput.value.trim();
-      const customTerms = customDict ? customDict.split(/\n/).filter(t => t.trim()).join("、") : "";
+      // 全セグメントを並列でWhisperに送信
+      let completed = 0;
+      const promises = audioSegments.map((seg, idx) =>
+        transcribeSegment(seg, apiKey).then(text => {
+          completed++;
+          mainStatus.innerText = `カルテ作成中... (Whisper文字起こし ${completed}/${segCount} セグメント)`;
+          return { idx, text };
+        })
+      );
+      const results = await Promise.all(promises);
+      // インデックス順にソートして結合
+      results.sort((a, b) => a.idx - b.idx);
+      const rawText = results.map(r => r.text).join('\n');
 
-      // 優先度の高い用語を先に配置（Whisperは冒頭のプロンプトをより重視する）
-      // ※病名は混同されやすいペアを優先して収録
-      const whisperPrompt = `獣医師の診察会話です。`
-        + `薬：アポキル、リブレラ、ソレンシア、シンパリカ、ネクスガード、レボリューション、セレニア、プレドニゾロン、クロミプラミン、ピモベンダン、フォルテコール、フロセミド、アモキシシリン、セファレキシン、ガバペンチン、メトロニダゾール、ミルベマイシン、アンチノール。`
-        + `病名：天疱瘡、僧帽弁閉鎖不全症、膝蓋骨脱臼、椎間板ヘルニア、変形性関節症、反応性過形成、子宮蓄膿症、甲状腺機能亢進症、副腎皮質機能亢進症、糖尿病、慢性腎臓病、膵炎、肝リピドーシス、肥満細胞腫、リンパ腫、血管肉腫、乳腺腫瘍。`
-        + `検査：細胞診、病理検査、血液検査、生化学検査、エコー、レントゲン、心電図、尿検査、皮下輸液、涙管洗浄。`
-        + `解剖：僧帽弁、三尖弁、肛門腺、甲状腺、副腎、脾臓、膀胱、前立腺、靭帯、前十字靭帯、盲腸便。`
-        + (customTerms ? `院内：${customTerms}。` : "");
-      formData.append("prompt", whisperPrompt.substring(0, 500));
+      if (!rawText.trim()) { throw new Error("音声の文字起こしが空でした。録音内容を確認してください。"); }
 
-      const res1 = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { "Authorization": `Bearer ${apiKey}` }, body: formData });
-      const data1 = await res1.json();
-      if (data1.error) { throw new Error("Whisperエラー: " + (data1.error.message || JSON.stringify(data1.error))); }
-      const rawText = data1.text;
-      if (!rawText) { throw new Error("音声の文字起こしが空でした。録音内容を確認してください。"); }
+      // ハルシネーション検出
+      const hallucinationWarnings = detectHallucination(rawText);
+      if (hallucinationWarnings.length) {
+        console.warn("[VSS] ハルシネーション検出:", hallucinationWarnings);
+      }
 
       // ■ LLMテキスト補正パイプライン（Whisper出力のクリーニング）
       mainStatus.innerText = "カルテ作成中... (テキスト補正中)";
@@ -973,8 +1047,11 @@ document.addEventListener('DOMContentLoaded', async function() {
       resultArea.style.display = "block";
       mainStatus.innerText = "完了";
 
-      // 記載漏れチェック
+      // 記載漏れチェック + ハルシネーション警告
       const warnings = checkMissingItems(cleanedSoap, selectedMode);
+      if (hallucinationWarnings.length) {
+        hallucinationWarnings.forEach(w => warnings.unshift(w));
+      }
       if (warnings.length > 0) {
         missingWarning.innerHTML = warnings.join("<br>");
         missingWarning.style.display = "block";

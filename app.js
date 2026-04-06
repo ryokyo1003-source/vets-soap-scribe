@@ -373,13 +373,18 @@ var SOAP = {
 
 
 // ─── Recording ───────────────────────────────────────────────
+var CHUNK_INTERVAL_MS = 5 * 60 * 1000; // 5分ごとにチャンク分割
+
 var Recording = {
+  _chunkTimer: null,
+
   start: function (stream) {
     State.audioSegments = [];
     State.mediaStream   = stream;
     State.timerSeconds  = 0;
     this._startRecorder(stream);
     this._startTimer();
+    this._startChunkTimer(stream);
   },
 
   _startRecorder: function (stream) {
@@ -394,7 +399,34 @@ var Recording = {
     State.mediaRecorder = mr;
   },
 
+  // 5分ごとにレコーダーを停止→再開してチャンク分割
+  _startChunkTimer: function (stream) {
+    this._stopChunkTimer();
+    var self = this;
+    this._chunkTimer = setInterval(function () {
+      if (State.mediaRecorder && State.mediaRecorder.state === 'recording') {
+        // 現在のレコーダーを停止（onstopでaudioSegmentsに保存される）
+        var origOnStop = State.mediaRecorder.onstop;
+        State.mediaRecorder.onstop = function () {
+          if (origOnStop) origOnStop();
+          // すぐに新しいレコーダーを開始
+          self._startRecorder(stream);
+          console.log('[VSS] チャンク分割: セグメント数=' + State.audioSegments.length);
+        };
+        State.mediaRecorder.stop();
+      }
+    }, CHUNK_INTERVAL_MS);
+  },
+
+  _stopChunkTimer: function () {
+    if (this._chunkTimer) {
+      clearInterval(this._chunkTimer);
+      this._chunkTimer = null;
+    }
+  },
+
   pause: function () {
+    this._stopChunkTimer();
     if (State.mediaRecorder && State.mediaRecorder.state === 'recording') {
       State.mediaRecorder.stop();
     }
@@ -406,21 +438,25 @@ var Recording = {
     if (State.mediaStream) {
       this._startRecorder(State.mediaStream);
       this._startTimer();
+      this._startChunkTimer(State.mediaStream);
     }
   },
 
   stop: function () {
+    var self = this;
     return new Promise(function (resolve) {
+      self._stopChunkTimer();
       clearInterval(State.timerInterval);
       State.timerInterval = null;
 
       function finalize() {
         setTimeout(function () {
-          var combined = new Blob(State.audioSegments, { type: 'audio/webm' });
+          // セグメント配列をそのまま返す（並列Whisper用）
+          var segments = State.audioSegments.slice();
           if (State.mediaStream) {
             State.mediaStream.getTracks().forEach(function (t) { t.stop(); });
           }
-          resolve(combined);
+          resolve(segments);
         }, 300);
       }
 
@@ -513,6 +549,7 @@ var AI = {
     fd.append('file', audioBlob, 'audio.webm');
     fd.append('model', 'whisper-1');
     fd.append('language', 'ja');
+    fd.append('temperature', '0');
     fd.append('prompt', prompt.substring(0, 500));
     var res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
@@ -523,6 +560,51 @@ var AI = {
     if (data.error) throw new Error('Whisper: ' + (data.error.message || JSON.stringify(data.error)));
     if (!data.text) throw new Error('音声の文字起こしが空でした。録音内容を確認してください。');
     return data.text;
+  },
+
+  // Step 1.5: 並列Whisper文字起こし（複数セグメント対応）
+  transcribeParallel: async function (audioSegments, apiKey, customDict, onProgress) {
+    if (!audioSegments || audioSegments.length === 0) {
+      throw new Error('音声セグメントがありません。');
+    }
+    // 単一セグメントの場合はそのまま処理
+    if (audioSegments.length === 1) {
+      if (onProgress) onProgress(1, 1);
+      return await AI.transcribe(audioSegments[0], apiKey, customDict);
+    }
+    // 複数セグメントを並列でWhisperに送信
+    var completed = 0;
+    var total = audioSegments.length;
+    var promises = audioSegments.map(function (seg, idx) {
+      return AI.transcribe(seg, apiKey, customDict).then(function (text) {
+        completed++;
+        if (onProgress) onProgress(completed, total);
+        return { idx: idx, text: text };
+      });
+    });
+    var results = await Promise.all(promises);
+    // インデックス順にソートして結合
+    results.sort(function (a, b) { return a.idx - b.idx; });
+    return results.map(function (r) { return r.text; }).join('\n');
+  },
+
+  // ハルシネーション検出（繰り返しフレーズ検出）
+  detectHallucination: function (text) {
+    var sentences = text.split(/[。．.！!？?\n]+/).filter(function (s) { return s.trim().length > 5; });
+    var warnings = [];
+    var repeatCount = 1;
+    for (var i = 1; i < sentences.length; i++) {
+      if (sentences[i].trim() === sentences[i - 1].trim()) {
+        repeatCount++;
+        if (repeatCount >= 3) {
+          warnings.push('Whisperハルシネーション検出: 「' + sentences[i].trim().substring(0, 20) + '...」が' + repeatCount + '回繰り返されています');
+          break;
+        }
+      } else {
+        repeatCount = 1;
+      }
+    }
+    return warnings;
   },
 
   // Step 2: SOAP generation（テキスト補正も統合）
@@ -1084,7 +1166,7 @@ var FamilySummary = {
 
 
 // ─── Main recording flow ──────────────────────────────────────
-async function runProcessWithAI(audioBlob) {
+async function runProcessWithAI(audioSegments) {
   var apiKey  = Settings.get('api_key');
   var mode    = document.getElementById('modeSelect').value;
   var patient = State.currentPatient;
@@ -1102,8 +1184,17 @@ async function runProcessWithAI(audioBlob) {
   if (!apiKey) { UI.toast('設定からAPIキーを入力してください', 'error'); return; }
 
   try {
-    UI.setProcessing('Whisperで音声を文字起こし中...');
-    var rawText = await AI.transcribe(audioBlob, apiKey, Settings.get('custom_dict'));
+    var segCount = audioSegments.length;
+    UI.setProcessing('Whisperで文字起こし中... (0/' + segCount + ' セグメント)');
+    var rawText = await AI.transcribeParallel(audioSegments, apiKey, Settings.get('custom_dict'), function (done, total) {
+      UI.setProcessing('Whisperで文字起こし中... (' + done + '/' + total + ' セグメント)');
+    });
+
+    // ハルシネーション検出
+    var hallucinationWarnings = AI.detectHallucination(rawText);
+    if (hallucinationWarnings.length) {
+      console.warn('[VSS] ハルシネーション検出:', hallucinationWarnings);
+    }
 
     UI.setProcessing('SOAPカルテを生成中...');
     var result = await AI.generateSOAP(rawText, patient, patientRef, mode, apiKey);
@@ -1118,6 +1209,10 @@ async function runProcessWithAI(audioBlob) {
     document.getElementById('saveVisitBtn').disabled = false;
 
     var warnings = SOAP.checkMissing(result.soap_text, mode, patient);
+    // ハルシネーション警告を追加
+    if (hallucinationWarnings.length) {
+      warnings = hallucinationWarnings.map(function (w) { return '⚠️ ' + w; }).concat(warnings);
+    }
     var warnEl = document.getElementById('missingWarning');
     if (warnings.length) { warnEl.innerHTML = warnings.join('<br>'); warnEl.style.display = 'block'; }
     else { warnEl.style.display = 'none'; }
@@ -1804,14 +1899,15 @@ function bindEvents() {
   document.getElementById('recStopBtn').addEventListener('click', async function () {
     State.recState = 'idle';
     UI.setRecordingState('idle');
-    var blob = await Recording.stop();
+    var segments = await Recording.stop();
     State.clearRecSession();
-    console.log('[VSS] 録音停止: blob.size=' + blob.size + ', segments=' + State.audioSegments.length);
-    if (blob.size < 100) {
+    var totalSize = segments.reduce(function (sum, s) { return sum + s.size; }, 0);
+    console.log('[VSS] 録音停止: totalSize=' + totalSize + ', segments=' + segments.length);
+    if (totalSize < 100) {
       UI.toast('録音データがありません。もう一度お試しください。', 'error');
       return;
     }
-    await runProcessWithAI(blob);
+    await runProcessWithAI(segments);
   });
 
   // Section copy (new visit result)
